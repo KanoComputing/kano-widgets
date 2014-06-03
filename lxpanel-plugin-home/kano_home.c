@@ -26,16 +26,12 @@
 #define PLUGIN_TOOLTIP "Home"
 
 
-Panel *panel;
-
 static gboolean minimise_windows(GtkWidget *, GdkEventButton *);
 
 
 static int plugin_constructor(Plugin *p, char **fp)
 {
     (void)fp;
-
-    panel = p->panel;
 
     /* need to create a widget to show */
     p->pwid = gtk_event_box_new();
@@ -51,7 +47,7 @@ static int plugin_constructor(Plugin *p, char **fp)
 
     /* our widget doesn't have a window... */
     gtk_widget_set_has_window(p->pwid, FALSE);
-    gtk_signal_connect(GTK_OBJECT(p->pwid), "button-press-event",GTK_SIGNAL_FUNC(minimise_windows), p);
+    gtk_signal_connect(GTK_OBJECT(p->pwid), "button-press-event", GTK_SIGNAL_FUNC(minimise_windows), p);
 
     /* Set a tooltip to the icon to show when the mouse sits over the it */
     GtkTooltips *tooltips;
@@ -73,6 +69,8 @@ static void plugin_destructor(Plugin *p)
 
 static gboolean minimise_windows(GtkWidget *widget, GdkEventButton *event)
 {
+    (void)widget;
+
     if (event->button != 1)
         return FALSE;
 
