@@ -8,5 +8,6 @@ Build-Depends: debhelper (>= 9), build-essential, pkg-config, libgtk2.0-dev,
 
 Package: kano-widgets
 Architecture: all
-Depends: ${shlibs:Depends}, ${misc:Depends}
+Depends: ${shlibs:Depends}, ${misc:Depends}, kano-profile (>= 1.2-2),
+         kano-sound-files
 Description: Collection of Kano lxpanel widgets
