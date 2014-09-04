@@ -28,11 +28,42 @@
 #include "parson.h"
 
 #define FIFO_PATH "/tmp/kano-notifications.fifo"
-#define DEFAULT_ICON_FILE "/usr/share/kano-updater/images/panel-default.png"
+#define ON_ICON_FILE "/usr/share/kano-widgets/icons/notifications-on.png"
+#define OFF_ICON_FILE "/usr/share/kano-widgets/icons/notifications-off.png"
+
+#define NOTIFICATION_IMAGE_WIDTH 280 // TODO fix image sizes
+#define NOTIFICATION_IMAGE_HEIGHT 170
+
+#define WINDOW_WIDTH NOTIFICATION_IMAGE_WIDTH
+#define WINDOW_HEIGHT (NOTIFICATION_IMAGE_HEIGHT + 90)
+#define WINDOW_MARGIN_RIGHT 20
+#define WINDOW_MARGIN_BOTTOM 20
+
+#define __STR_HELPER(x) #x
+#define STR(x) __STR_HELPER(x)
+
+#define LEVEL_IMG_BASE_PATH ("/usr/share/kano-profile/media/images/%s/" \
+	STR(NOTIFICATION_IMAGE_WIDTH)  "x" STR(NOTIFICATION_IMAGE_HEIGHT) \
+		"/Level-%s.png")
+#define AWARD_IMG_BASE_PATH ("/usr/share/kano-profile/media/images/%s/" \
+	STR(NOTIFICATION_IMAGE_WIDTH) "x" STR(NOTIFICATION_IMAGE_HEIGHT) \
+	"/%s/%s_levelup.png")
+
+#define LEVEL_TITLE "New level!"
+#define LEVEL_BYLINE "You're now Level %s"
+
+#define BADGE_TITLE "New badge!"
+#define ENV_TITLE "New environment!"
+#define AVATAR_TITLE "New avatar!"
+
+#define RULES_BASE_PATH "/usr/share/kano-profile/rules/%s/%s.json"
+
 
 Panel *panel;
 
 typedef struct {
+	gboolean enabled;
+
 	int fifo_fd;
 	GIOChannel *fifo_channel;
 	guint watch_id;
@@ -45,6 +76,12 @@ typedef struct {
 	GtkWidget *window;
 	guint window_timeout;
 } kano_notifications_t;
+
+typedef struct {
+	gchar *image_path;
+	gchar *title;
+	gchar *byline;
+} notification_info_t;
 
 static gboolean plugin_clicked(GtkWidget *, GdkEventButton *,
 			       kano_notifications_t *);
@@ -62,6 +99,8 @@ static int plugin_constructor(Plugin *plugin, char **fp)
 
 	plugin_data->window = NULL;
 	plugin_data->queue = NULL;
+
+	plugin_data->enabled = TRUE; // TODO load from the configuration
 
 	g_mutex_init(&(plugin_data->lock));
 
@@ -85,21 +124,11 @@ static int plugin_constructor(Plugin *plugin, char **fp)
 	/* put it where it belongs */
 	plugin->priv = plugin_data;
 
-	GtkWidget *icon = gtk_image_new_from_file(DEFAULT_ICON_FILE);
+	GtkWidget *icon = gtk_image_new_from_file(plugin_data->enabled ?
+					ON_ICON_FILE : OFF_ICON_FILE);
 	plugin_data->icon = icon;
 
-	/* need to create a widget to show */
-	plugin->pwid = gtk_event_box_new();
-	gtk_container_set_border_width(GTK_CONTAINER(plugin->pwid), 0);
-	gtk_container_add(GTK_CONTAINER(plugin->pwid), GTK_WIDGET(icon));
-
-	/* our widget doesn't have a window... */
-	gtk_widget_set_has_window(plugin->pwid, FALSE);
-
-
-	gtk_signal_connect(GTK_OBJECT(plugin->pwid), "button-press-event",
-			   GTK_SIGNAL_FUNC(plugin_clicked), plugin);
-
+	gtk_widget_set_sensitive(icon, TRUE);
 
 	/* Set a tooltip to the icon to show when the mouse sits over it */
 	GtkTooltips *tooltips;
@@ -107,7 +136,15 @@ static int plugin_constructor(Plugin *plugin, char **fp)
 	gtk_tooltips_set_tip(tooltips, GTK_WIDGET(icon),
 			     "Notification Centre", NULL);
 
-	gtk_widget_set_sensitive(icon, TRUE);
+	plugin->pwid = gtk_event_box_new();
+	gtk_container_set_border_width(GTK_CONTAINER(plugin->pwid), 0);
+	gtk_container_add(GTK_CONTAINER(plugin->pwid), GTK_WIDGET(icon));
+
+	gtk_signal_connect(GTK_OBJECT(plugin->pwid), "button-press-event",
+			   GTK_SIGNAL_FUNC(plugin_clicked), plugin_data);
+
+	/* our widget doesn't have a window... */
+	gtk_widget_set_has_window(plugin->pwid, FALSE);
 
 	/* show our widget */
 	gtk_widget_show_all(plugin->pwid);
@@ -132,25 +169,7 @@ static void plugin_destructor(Plugin *p)
 	g_free(plugin_data);
 }
 
-static gboolean hide_notification(GtkWidget *w, GdkEventButton *event,
-				  kano_notifications_t *plugin_data)
-{
-	if (g_mutex_trylock(&(plugin_data->lock)) == TRUE) {
-		g_source_remove(plugin_data->window_timeout);
-		g_mutex_unlock(&(plugin_data->lock));
-		close_notification(plugin_data);
-	}
-
-	return TRUE;
-}
-
-typedef struct {
-	gchar *image_path;
-	gchar *title;
-	gchar *byline;
-} notification_t;
-
-static void free_notification(notification_t *data)
+static void free_notification(notification_info_t *data)
 {
 	g_free(data->image_path);
 	g_free(data->title);
@@ -159,7 +178,7 @@ static void free_notification(notification_t *data)
 }
 
 static void get_award_byline(gchar *json_file, gchar *key,
-			     notification_t *notification)
+			     notification_info_t *notification)
 {
 	JSON_Value *root_value = NULL;
 	JSON_Object *root = NULL;
@@ -169,12 +188,10 @@ static void get_award_byline(gchar *json_file, gchar *key,
 	notification->byline = NULL;
 
 	root_value = json_parse_file(json_file);
-	printf("%d\n", json_value_get_type(root_value));
 	if (json_value_get_type(root_value) != JSONObject) {
 		json_value_free(root_value);
 		return;
 	}
-	printf("Json loaded ok\n");
 
 	root = json_value_get_object(root_value);
 	award = json_object_get_object(root, key);
@@ -182,47 +199,27 @@ static void get_award_byline(gchar *json_file, gchar *key,
 		json_value_free(root_value);
 		return;
 	}
-	printf("award found ok\n");
 
 	byline = json_object_get_string(award, "title");
 	if (!byline) {
 		json_value_free(root_value);
 		return;
 	}
-	printf("byline found ok\n");
 
 	notification->byline = g_new0(gchar, strlen(byline) + 1);
 	g_strlcpy(notification->byline, byline, strlen(byline) + 1);
 	json_value_free(root_value);
 }
 
-static notification_t *get_notification_by_id(gchar *id)
+static notification_info_t *get_notification_by_id(gchar *id)
 {
-#define LEVEL_IMG_BASE_PATH "/usr/share/kano-profile/media/images/%s/280x170/Level-%s.png"
-#define AWARD_IMG_BASE_PATH "/usr/share/kano-profile/media/images/%s/280x170/%s/%s.png"
-
-#define LEVEL_TITLE "New level!"
-#define LEVEL_BYLINE "You're now Level %s"
-
-#define BADGE_TITLE "New badge!"
-#define ENV_TITLE "New environment!"
-#define AVATAR_TITLE "New avatar!"
-
-#define RULES_BASE_PATH "/usr/share/kano-profile/rules/%s/%s.json"
-
-        printf("get_notif\n");
-
 	gchar **tokens = g_strsplit(id, ":", 0);
 	gchar **iter;
 	size_t bufsize = 0;
 
 	size_t length = 0;
-	for (iter = tokens; *iter; iter++) {
-		printf("%s\n", *iter);
+	for (iter = tokens; *iter; iter++)
 		length++;
-	}
-
-	printf("tokens %d\n", length);
 
 	if (length < 1) {
 		g_strfreev(tokens);
@@ -235,12 +232,12 @@ static notification_t *get_notification_by_id(gchar *id)
 			return NULL;
 		}
 
-		notification_t *data = g_new0(notification_t, 1);
+		notification_info_t *data = g_new0(notification_info_t, 1);
 
 		/* Allocate and set the title */
 		bufsize = strlen(LEVEL_TITLE);
 		data->title = g_new0(gchar, bufsize+1);
-		g_strlcpy(data->title, LEVEL_TITLE, bufsize);
+		g_strlcpy(data->title, LEVEL_TITLE, bufsize+1);
 
 		/* Allocate and set the byline */
 		bufsize = strlen(LEVEL_BYLINE) + strlen(tokens[1]);
@@ -253,8 +250,6 @@ static notification_t *get_notification_by_id(gchar *id)
 		data->image_path = g_new0(gchar, bufsize+1);
 		g_sprintf(data->image_path, LEVEL_IMG_BASE_PATH, tokens[0], tokens[1]);
 
-		printf("%s %s %s\n", data->image_path, data->title, data->byline);
-
 		g_strfreev(tokens);
 		return data;
 	}
@@ -265,24 +260,23 @@ static notification_t *get_notification_by_id(gchar *id)
 		return NULL;
 	}
 
-	notification_t *data = g_new0(notification_t, 1);
+	notification_info_t *data = g_new0(notification_info_t, 1);
 
 	if (g_strcmp0(tokens[0], "badges") == 0) {
-		printf("it's a badge\n");
 		/* Allocate and set the title */
 		bufsize = strlen(BADGE_TITLE);
 		data->title = g_new0(gchar, bufsize+1);
-		g_strlcpy(data->title, BADGE_TITLE, bufsize);
+		g_strlcpy(data->title, BADGE_TITLE, bufsize+1);
 	} else if (g_strcmp0(tokens[0], "environments") == 0) {
 		/* Allocate and set the title */
 		bufsize = strlen(ENV_TITLE);
 		data->title = g_new0(gchar, bufsize+1);
-		g_strlcpy(data->title, ENV_TITLE, bufsize);
+		g_strlcpy(data->title, ENV_TITLE, bufsize+1);
 	} else if (g_strcmp0(tokens[0], "avatars") == 0) {
 		/* Allocate and set the title */
-		bufsize = strlen(ENV_TITLE);
+		bufsize = strlen(AVATAR_TITLE);
 		data->title = g_new0(gchar, bufsize+1);
-		g_strlcpy(data->title, ENV_TITLE, bufsize);
+		g_strlcpy(data->title, AVATAR_TITLE, bufsize+1);
 	} else {
 		g_strfreev(tokens);
 		free_notification(data);
@@ -296,7 +290,6 @@ static notification_t *get_notification_by_id(gchar *id)
 	g_sprintf(json_path, RULES_BASE_PATH, tokens[0], tokens[1]);
 
 
-	printf("%s\n", json_path);
 	/* Load award title */
 	get_award_byline(json_path, tokens[2], data);
 	g_free(json_path);
@@ -313,30 +306,41 @@ static notification_t *get_notification_by_id(gchar *id)
 	data->image_path = g_new0(gchar, bufsize+1);
 	g_sprintf(data->image_path, AWARD_IMG_BASE_PATH, tokens[0], tokens[1], tokens[2]);
 
-	printf("%s %s %s\n", data->image_path, data->title, data->byline);
 	g_strfreev(tokens);
 	return data;
 }
 
-static void show_notification(kano_notifications_t *plugin_data,
-			      notification_t *notification)
+static gboolean hide_notification_window(GtkWidget *w, GdkEventButton *event,
+				  kano_notifications_t *plugin_data)
 {
-#define WIDTH 280
-#define HEIGHT (170 + 90)
+	if (g_mutex_trylock(&(plugin_data->lock)) == TRUE) {
+		g_source_remove(plugin_data->window_timeout);
+		g_mutex_unlock(&(plugin_data->lock));
+		close_notification(plugin_data);
+	}
+
+	return TRUE;
+}
+
+static void show_notification_window(kano_notifications_t *plugin_data,
+			      notification_info_t *notification)
+{
 	GtkWidget *win = gtk_window_new(GTK_WINDOW_POPUP);
 	plugin_data->window = win;
-	gtk_window_set_default_size(GTK_WINDOW(win), WIDTH, HEIGHT);
+	gtk_window_set_default_size(GTK_WINDOW(win), WINDOW_WIDTH, WINDOW_HEIGHT);
 	gtk_window_set_position(GTK_WINDOW(win), GTK_WIN_POS_CENTER);
 
 	/* TODO Positioning doesn't take into account the position of the
 	   panel itself. */
 	gtk_window_set_gravity(GTK_WINDOW(win), GDK_GRAVITY_SOUTH_EAST);
-	gtk_window_move(GTK_WINDOW(win), gdk_screen_width() - WIDTH - 20,
-			gdk_screen_height() - HEIGHT - 50);
+	gtk_window_move(GTK_WINDOW(win),
+		gdk_screen_width() - WINDOW_WIDTH - WINDOW_MARGIN_RIGHT,
+		gdk_screen_height() - WINDOW_HEIGHT - panel->height
+		- WINDOW_MARGIN_BOTTOM);
 
 	GtkStyle *style;
 	GdkColor white;
-	gdk_color_parse("#fff", &white);
+	gdk_color_parse("white", &white);
 	gtk_widget_modify_bg(win, GTK_STATE_NORMAL, &white);
 
 	GtkWidget *image = gtk_image_new_from_file(notification->image_path);
@@ -344,7 +348,7 @@ static void show_notification(kano_notifications_t *plugin_data,
 
 	GtkWidget *eventbox = gtk_event_box_new();
 	gtk_signal_connect(GTK_OBJECT(eventbox), "button-release-event",
-                     GTK_SIGNAL_FUNC(hide_notification), plugin_data);
+                     GTK_SIGNAL_FUNC(hide_notification_window), plugin_data);
 
 	GtkWidget *box = gtk_vbox_new(FALSE, 0);
 	gtk_container_add(GTK_CONTAINER(eventbox), GTK_WIDGET(box));
@@ -387,7 +391,7 @@ static void show_notification(kano_notifications_t *plugin_data,
 
 	gtk_widget_show_all(win);
 
-	plugin_data->window_timeout = g_timeout_add(3000,
+	plugin_data->window_timeout = g_timeout_add(6000,
 				(GSourceFunc) close_notification,
 				(gpointer) plugin_data);
 }
@@ -400,14 +404,14 @@ static gboolean close_notification(kano_notifications_t *plugin_data)
 		gtk_widget_destroy(plugin_data->window);
 		plugin_data->window = NULL;
 
-		notification_t *notification = g_list_nth_data(plugin_data->queue, 0);
+		notification_info_t *notification = g_list_nth_data(plugin_data->queue, 0);
 		free_notification(notification);
 		plugin_data->queue = g_list_remove(plugin_data->queue, notification);
 
 
 		if (g_list_length(plugin_data->queue) >= 1) {
-			notification_t *notification = g_list_nth_data(plugin_data->queue, 0);
-			show_notification(plugin_data, notification);
+			notification_info_t *notification = g_list_nth_data(plugin_data->queue, 0);
+			show_notification_window(plugin_data, notification);
 		}
 
 		g_mutex_unlock(&(plugin_data->lock));
@@ -416,37 +420,7 @@ static gboolean close_notification(kano_notifications_t *plugin_data)
 	return FALSE;
 }
 
-static gboolean io_watch_cb(GIOChannel *source, GIOCondition cond, gpointer data)
-{
-	kano_notifications_t *plugin_data = (kano_notifications_t *)data;
-
-	gchar *line = NULL;
-	gsize len, tpos;
-	GIOStatus status;
-
-	status = g_io_channel_read_line(source, &line, &len, &tpos, NULL);
-	if (status == G_IO_STATUS_NORMAL) {
-		line[tpos] = '\0';
-
-		notification_t *data = get_notification_by_id(line);
-		if (data) {
-			g_mutex_lock(&(plugin_data->lock));
-
-			plugin_data->queue = g_list_append(plugin_data->queue, data);
-
-			if (g_list_length(plugin_data->queue) <= 1)
-				show_notification(plugin_data, data);
-
-			g_mutex_unlock(&(plugin_data->lock));
-		}
-
-		g_free(line);
-	}
-
-	return TRUE;
-}
-
-/*static void launch_cmd(const char *cmd)
+static void launch_cmd(const char *cmd)
 {
 	GAppInfo *appinfo = NULL;
 	gboolean ret = FALSE;
@@ -462,24 +436,56 @@ static gboolean io_watch_cb(GIOChannel *source, GIOCondition cond, gpointer data
 	ret = g_app_info_launch(appinfo, NULL, NULL, NULL);
 	if (!ret)
 		perror("Command lanuch failed.");
-}*/
+}
+
+static gboolean io_watch_cb(GIOChannel *source, GIOCondition cond, gpointer data)
+{
+	kano_notifications_t *plugin_data = (kano_notifications_t *)data;
+
+	gchar *line = NULL;
+	gsize len, tpos;
+	GIOStatus status;
+
+	status = g_io_channel_read_line(source, &line, &len, &tpos, NULL);
+	if (status == G_IO_STATUS_NORMAL) {
+		line[tpos] = '\0';
+
+		if (!plugin_data->enabled) {
+			g_free(line);
+			return TRUE;
+		}
+
+		notification_info_t *data = get_notification_by_id(line);
+		if (data) {
+			g_mutex_lock(&(plugin_data->lock));
+
+			plugin_data->queue = g_list_append(plugin_data->queue, data);
+
+			if (g_list_length(plugin_data->queue) <= 1) {
+				show_notification_window(plugin_data, data);
+				launch_cmd("aplay /usr/share/kano-media/sounds/kano_level_up.wav");
+			}
+
+			g_mutex_unlock(&(plugin_data->lock));
+		}
+
+		g_free(line);
+	}
+
+	return TRUE;
+}
 
 static gboolean plugin_clicked(GtkWidget *widget, GdkEventButton *event,
-		      kano_notifications_t *plugin)
+		      kano_notifications_t *plugin_data)
 {
 	// TODO TOGGLE NOTIFICATIONS!
 	if (event->button != 1)
 		return FALSE;
 
+	plugin_data->enabled = !(plugin_data->enabled);
 
-	GtkWidget *dialog = gtk_message_dialog_new(NULL,
-		GTK_DIALOG_DESTROY_WITH_PARENT,
-		GTK_MESSAGE_INFO,
-		GTK_BUTTONS_OK,
-		"weeee");
-
-	gtk_dialog_run(GTK_DIALOG(dialog));
-	gtk_widget_destroy(dialog);
+	gtk_image_set_from_file(GTK_IMAGE(plugin_data->icon),
+		plugin_data->enabled ? ON_ICON_FILE : OFF_ICON_FILE);
 
 	return TRUE;
 }
