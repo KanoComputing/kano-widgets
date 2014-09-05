@@ -5,3 +5,4 @@
 
 override_dh_auto_build:
 	cd lxpanel-plugin-home && make
+	cd lxpanel-plugin-notifications && make
