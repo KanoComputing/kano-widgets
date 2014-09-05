@@ -1,3 +1,4 @@
 icon/* /usr/share/kano-widgets/icons/
 
 lxpanel-plugin-home/kano_home.so usr/lib/arm-linux-gnueabihf/lxpanel/plugins/
+lxpanel-plugin-notifications/kano_notifications.so usr/lib/arm-linux-gnueabihf/lxpanel/plugins/
