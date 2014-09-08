@@ -284,7 +284,7 @@ static notification_info_t *get_notification_by_id(gchar *id)
 	}
 
 	/* Allocate and set json rules path */
-	bufsize += strlen(RULES_BASE_PATH);
+	bufsize = strlen(RULES_BASE_PATH);
 	bufsize += strlen(tokens[0]) + strlen(tokens[1]);
 	gchar *json_path = g_new0(gchar, bufsize+1);
 	g_sprintf(json_path, RULES_BASE_PATH, tokens[0], tokens[1]);
@@ -301,10 +301,18 @@ static notification_info_t *get_notification_by_id(gchar *id)
 	}
 
 	/* Allocate and set image_path */
-	bufsize += strlen(AWARD_IMG_BASE_PATH);
-	bufsize += strlen(tokens[0]) + strlen(tokens[1]);
-	data->image_path = g_new0(gchar, bufsize+1);
-	g_sprintf(data->image_path, AWARD_IMG_BASE_PATH, tokens[0], tokens[1], tokens[2]);
+	if (g_strcmp0(tokens[0], "avatars") == 0) {
+		/* There's a path exception for avatars, handle it here. */
+		bufsize = strlen(AWARD_IMG_BASE_PATH);
+		bufsize += strlen(tokens[0]) + 2*strlen(tokens[1]);
+		data->image_path = g_new0(gchar, bufsize+1);
+		g_sprintf(data->image_path, AWARD_IMG_BASE_PATH, tokens[0], tokens[1], tokens[1]);
+	} else {
+		bufsize = strlen(AWARD_IMG_BASE_PATH);
+		bufsize += strlen(tokens[0]) + strlen(tokens[1]) + strlen(tokens[2]);
+		data->image_path = g_new0(gchar, bufsize+1);
+		g_sprintf(data->image_path, AWARD_IMG_BASE_PATH, tokens[0], tokens[1], tokens[2]);
+	}
 
 	g_strfreev(tokens);
 	return data;
