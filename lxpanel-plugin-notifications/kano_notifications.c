@@ -59,7 +59,6 @@
 #define WORLD_NOTIFICATION_TITLE "New Kano World notification!"
 #define WORLD_NOTIFICATION_BYLINE "You've got %s unread notifications!"
 
-
 #define RULES_BASE_PATH "/usr/share/kano-profile/rules/%s/%s.json"
 
 
@@ -278,9 +277,9 @@ static notification_info_t *get_notification_by_id(gchar *id)
 
         /* Allocate and set image_path */
         bufsize += strlen(LEVEL_IMG_BASE_PATH);
-        bufsize += strlen(tokens[0]) + strlen(tokens[1]);
+        bufsize += strlen("level") + strlen(tokens[1]);
         data->image_path = g_new0(gchar, bufsize+1);
-        g_sprintf(data->image_path, LEVEL_IMG_BASE_PATH, tokens[0], tokens[1]);
+        g_sprintf(data->image_path, LEVEL_IMG_BASE_PATH, "level", tokens[1]);
 
         g_strfreev(tokens);
         return data;
