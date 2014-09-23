@@ -56,8 +56,8 @@
 #define ENV_TITLE "New environment!"
 #define AVATAR_TITLE "New avatar!"
 
-#define WORLD_NOTIFICATION_TITLE "New Kano World notification!"
-#define WORLD_NOTIFICATION_BYLINE "You've got %s unread notifications!"
+#define WORLD_NOTIFICATION_TITLE "Kano World"
+#define WORLD_NOTIFICATION_BYLINE "%s unread notifications"
 
 #define RULES_BASE_PATH "/usr/share/kano-profile/rules/%s/%s.json"
 
