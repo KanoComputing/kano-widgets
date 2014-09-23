@@ -56,6 +56,10 @@
 #define ENV_TITLE "New environment!"
 #define AVATAR_TITLE "New avatar!"
 
+#define WORLD_NOTIFICATION_TITLE "New Kano World notification!"
+#define WORLD_NOTIFICATION_BYLINE "You've got %s unread notifications!"
+
+
 #define RULES_BASE_PATH "/usr/share/kano-profile/rules/%s/%s.json"
 
 
@@ -253,6 +257,34 @@ static notification_info_t *get_notification_by_id(gchar *id)
 		g_strfreev(tokens);
 		return data;
 	}
+
+    if (g_strcmp0(tokens[0], "world_notification") == 0) {
+        if (length < 2) {
+            g_strfreev(tokens);
+            return NULL;
+        }
+
+        notification_info_t *data = g_new0(notification_info_t, 1);
+
+        /* Allocate and set the title */
+        bufsize = strlen(WORLD_NOTIFICATION_TITLE);
+        data->title = g_new0(gchar, bufsize+1);
+        g_strlcpy(data->title, WORLD_NOTIFICATION_TITLE, bufsize+1);
+
+        /* Allocate and set the byline */
+        bufsize = strlen(WORLD_NOTIFICATION_BYLINE) + strlen(tokens[1]);
+        data->byline = g_new0(gchar, bufsize+1);
+        g_sprintf(data->byline, WORLD_NOTIFICATION_BYLINE, tokens[1]);
+
+        /* Allocate and set image_path */
+        bufsize += strlen(LEVEL_IMG_BASE_PATH);
+        bufsize += strlen(tokens[0]) + strlen(tokens[1]);
+        data->image_path = g_new0(gchar, bufsize+1);
+        g_sprintf(data->image_path, LEVEL_IMG_BASE_PATH, tokens[0], tokens[1]);
+
+        g_strfreev(tokens);
+        return data;
+    }
 
 	/* badge, environment, or avatar */
 	if (length < 3) {
