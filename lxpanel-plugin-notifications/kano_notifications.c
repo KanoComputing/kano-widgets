@@ -104,11 +104,18 @@ static int plugin_constructor(Plugin *plugin, char **fp)
 
 	g_mutex_init(&(plugin_data->lock));
 
+        // FIXME: unlink does not work either here or during destructor
 	unlink(FIFO_PATH);
-	if (mkfifo(FIFO_PATH, 0600) < 0) {
+
+        // Set access mode as wide as possible (this depends on current umask)
+	if (mkfifo(FIFO_PATH, S_IWUSR | S_IRUSR | S_IRGRP | S_IWGRP | S_IROTH) < 0) {
 		perror("mkfifo");
 		return 0;
 	}
+        else {
+          // Enforce write mode to group and others
+          chmod (FIFO_PATH, 0666);
+        }
 
 	plugin_data->fifo_fd = open(FIFO_PATH, O_RDWR | O_NONBLOCK, 0);
 	if (plugin_data->fifo_fd < 0) {
@@ -167,6 +174,9 @@ static void plugin_destructor(Plugin *p)
 	g_mutex_clear(&(plugin_data->lock));
 
 	g_free(plugin_data);
+
+        // remove the Pipe file
+	unlink(FIFO_PATH);
 }
 
 static void free_notification(notification_info_t *data)
