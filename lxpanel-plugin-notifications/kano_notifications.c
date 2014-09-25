@@ -50,7 +50,7 @@
 	"/%s/%s_levelup.png")
 #define WORLD_IMG_BASE_PATH ("/usr/share/kano-profile/media/images/notification/" \
     STR(NOTIFICATION_IMAGE_WIDTH)  "x" STR(NOTIFICATION_IMAGE_HEIGHT) \
-        "/Notification-%s.png")
+        "/notification.png")
 
 #define LEVEL_TITLE "New level!"
 #define LEVEL_BYLINE "You're now Level %s"
@@ -280,9 +280,8 @@ static notification_info_t *get_notification_by_id(gchar *id)
 
         /* Allocate and set image_path */
         bufsize += strlen(WORLD_IMG_BASE_PATH);
-        bufsize += strlen(tokens[1]);
         data->image_path = g_new0(gchar, bufsize+1);
-        g_sprintf(data->image_path, WORLD_IMG_BASE_PATH, tokens[1]);
+        g_sprintf(data->image_path, WORLD_IMG_BASE_PATH);
 
         g_strfreev(tokens);
         return data;
