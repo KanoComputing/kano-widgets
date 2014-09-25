@@ -48,6 +48,9 @@
 #define AWARD_IMG_BASE_PATH ("/usr/share/kano-profile/media/images/%s/" \
 	STR(NOTIFICATION_IMAGE_WIDTH) "x" STR(NOTIFICATION_IMAGE_HEIGHT) \
 	"/%s/%s_levelup.png")
+#define WORLD_IMG_BASE_PATH ("/usr/share/kano-profile/media/images/notification/" \
+    STR(NOTIFICATION_IMAGE_WIDTH)  "x" STR(NOTIFICATION_IMAGE_HEIGHT) \
+        "/notification.png")
 
 #define LEVEL_TITLE "New level!"
 #define LEVEL_BYLINE "You're now Level %s"
@@ -55,6 +58,9 @@
 #define BADGE_TITLE "New badge!"
 #define ENV_TITLE "New environment!"
 #define AVATAR_TITLE "New avatar!"
+
+#define WORLD_NOTIFICATION_TITLE "Kano World"
+#define WORLD_NOTIFICATION_BYLINE "%s unread notifications"
 
 #define RULES_BASE_PATH "/usr/share/kano-profile/rules/%s/%s.json"
 
@@ -263,6 +269,33 @@ static notification_info_t *get_notification_by_id(gchar *id)
 		g_strfreev(tokens);
 		return data;
 	}
+
+    if (g_strcmp0(tokens[0], "world_notification") == 0) {
+        if (length < 2) {
+            g_strfreev(tokens);
+            return NULL;
+        }
+
+        notification_info_t *data = g_new0(notification_info_t, 1);
+
+        /* Allocate and set the title */
+        bufsize = strlen(WORLD_NOTIFICATION_TITLE);
+        data->title = g_new0(gchar, bufsize+1);
+        g_strlcpy(data->title, WORLD_NOTIFICATION_TITLE, bufsize+1);
+
+        /* Allocate and set the byline */
+        bufsize = strlen(WORLD_NOTIFICATION_BYLINE) + strlen(tokens[1]);
+        data->byline = g_new0(gchar, bufsize+1);
+        g_sprintf(data->byline, WORLD_NOTIFICATION_BYLINE, tokens[1]);
+
+        /* Allocate and set image_path */
+        bufsize += strlen(WORLD_IMG_BASE_PATH);
+        data->image_path = g_new0(gchar, bufsize+1);
+        g_sprintf(data->image_path, WORLD_IMG_BASE_PATH);
+
+        g_strfreev(tokens);
+        return data;
+    }
 
 	/* badge, environment, or avatar */
 	if (length < 3) {
