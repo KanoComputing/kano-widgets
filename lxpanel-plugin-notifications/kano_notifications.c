@@ -98,21 +98,24 @@ static gboolean close_notification(kano_notifications_t *plugin_data);
 static int plugin_constructor(Plugin *plugin, char **fp);
 static void plugin_destructor(Plugin *p);
 
+gchar *get_fifo_filename(void);
 
-char *get_fifo_filename(void)
+
+gchar *get_fifo_filename(void)
 {
     struct passwd *pw = getpwuid(getuid());
     const char *homedir = pw->pw_dir;
 
     // You are responsible for freeing the returned char buffer
-    char *fifo_filename = (char *) calloc(sizeof(char), strlen(homedir) + strlen(FIFO_FILENAME) + sizeof(char) * 2);
+    int buff_len=strlen(homedir) + strlen(FIFO_FILENAME) + sizeof(char) * 2;
+    gchar *fifo_filename = g_new0(gchar, buff_len);
     if (!fifo_filename) {
         return NULL;
     }
     else {
-        strcpy(fifo_filename, homedir);
-        strcat(fifo_filename, "/");
-        strcat(fifo_filename, FIFO_FILENAME);
+        g_strlcpy(fifo_filename, homedir, buff_len);
+        g_strlcat(fifo_filename, "/", buff_len);
+        g_strlcat(fifo_filename, FIFO_FILENAME, buff_len);
         return (fifo_filename);
     }
 }
@@ -134,7 +137,7 @@ static int plugin_constructor(Plugin *plugin, char **fp)
 	g_mutex_init(&(plugin_data->lock));
 
         // Create the pipe file
-        char *pipe_filename=get_fifo_filename();
+        gchar *pipe_filename=get_fifo_filename();
         if (pipe_filename) {
 
             // remove previous instance of the pipe
@@ -159,7 +162,7 @@ static int plugin_constructor(Plugin *plugin, char **fp)
             plugin_data->fifo_channel = g_io_channel_unix_new(plugin_data->fifo_fd);
             plugin_data->watch_id = g_io_add_watch(plugin_data->fifo_channel,
                                                    G_IO_IN, (GIOFunc)io_watch_cb, (gpointer)plugin_data);
-            free(pipe_filename);
+            g_free(pipe_filename);
         }
 
 	/* put it where it belongs */
@@ -204,10 +207,10 @@ static void plugin_destructor(Plugin *p)
 	g_io_channel_unref(plugin_data->fifo_channel);
 	close(plugin_data->fifo_fd);
 
-        char *pipe_filename=get_fifo_filename();
+        gchar *pipe_filename=get_fifo_filename();
         if (pipe_filename) {
             unlink(pipe_filename);
-            free(pipe_filename);
+            g_free(pipe_filename);
         }
 
 	close_notification(plugin_data);
