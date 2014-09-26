@@ -24,10 +24,11 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <pwd.h>
 
 #include "parson.h"
 
-#define FIFO_PATH "/tmp/kano-notifications.fifo"
+#define FIFO_FILENAME ".kano-notifications.fifo"
 #define ON_ICON_FILE "/usr/share/kano-widgets/icons/notifications-on.png"
 #define OFF_ICON_FILE "/usr/share/kano-widgets/icons/notifications-off.png"
 
@@ -94,6 +95,28 @@ static gboolean plugin_clicked(GtkWidget *, GdkEventButton *,
 static gboolean io_watch_cb(GIOChannel *source, GIOCondition cond, gpointer data);
 static gboolean close_notification(kano_notifications_t *plugin_data);
 
+static int plugin_constructor(Plugin *plugin, char **fp);
+static void plugin_destructor(Plugin *p);
+
+
+char *get_fifo_filename(void)
+{
+    struct passwd *pw = getpwuid(getuid());
+    const char *homedir = pw->pw_dir;
+
+    // You are responsible for freeing the returned char buffer
+    char *fifo_filename = (char *) calloc(sizeof(char), strlen(homedir) + strlen(FIFO_FILENAME) + sizeof(char) * 2);
+    if (!fifo_filename) {
+        return NULL;
+    }
+    else {
+        strcpy(fifo_filename, homedir);
+        strcat(fifo_filename, "/");
+        strcat(fifo_filename, FIFO_FILENAME);
+        return (fifo_filename);
+    }
+}
+
 static int plugin_constructor(Plugin *plugin, char **fp)
 {
 	(void)fp;
@@ -110,29 +133,35 @@ static int plugin_constructor(Plugin *plugin, char **fp)
 
 	g_mutex_init(&(plugin_data->lock));
 
-        // FIXME: unlink does not work either here or during destructor
-	unlink(FIFO_PATH);
+        // Create the pipe file
+        char *pipe_filename=get_fifo_filename();
+        if (pipe_filename) {
 
-        // Set access mode as wide as possible (this depends on current umask)
-	if (mkfifo(FIFO_PATH, S_IWUSR | S_IRUSR | S_IRGRP | S_IWGRP | S_IROTH) < 0) {
+            // remove previous instance of the pipe
+            // FIXME: We are not being called during widget destructor
+            unlink(pipe_filename);
+
+            // Set access mode as wide as possible (this depends on current umask)
+            if (mkfifo(pipe_filename, S_IWUSR | S_IRUSR | S_IRGRP | S_IWGRP | S_IROTH) < 0) {
 		perror("mkfifo");
 		return 0;
-	}
-        else {
-          // Enforce write mode to group and others
-          chmod (FIFO_PATH, 0666);
-        }
+            }
+            else {
+                // Enforce write mode to group and others
+                chmod (pipe_filename, 0666);
+            }
 
-	plugin_data->fifo_fd = open(FIFO_PATH, O_RDWR | O_NONBLOCK, 0);
-	if (plugin_data->fifo_fd < 0) {
+            plugin_data->fifo_fd = open(pipe_filename, O_RDWR | O_NONBLOCK, 0);
+            if (plugin_data->fifo_fd < 0) {
 		perror("open");
 		return 0;
-	}
+            }
 
-	plugin_data->fifo_channel = g_io_channel_unix_new(plugin_data->fifo_fd);
-	plugin_data->watch_id = g_io_add_watch(plugin_data->fifo_channel,
-		G_IO_IN, (GIOFunc)io_watch_cb, (gpointer)plugin_data);
-
+            plugin_data->fifo_channel = g_io_channel_unix_new(plugin_data->fifo_fd);
+            plugin_data->watch_id = g_io_add_watch(plugin_data->fifo_channel,
+                                                   G_IO_IN, (GIOFunc)io_watch_cb, (gpointer)plugin_data);
+            free(pipe_filename);
+        }
 
 	/* put it where it belongs */
 	plugin->priv = plugin_data;
@@ -167,22 +196,26 @@ static int plugin_constructor(Plugin *plugin, char **fp)
 
 static void plugin_destructor(Plugin *p)
 {
+        // FIXME: We are not being called during destructor. lxpanel is agressively killed?
+
 	kano_notifications_t *plugin_data = (kano_notifications_t *)p->priv;
 
 	g_source_remove(plugin_data->watch_id);
 	g_io_channel_shutdown(plugin_data->fifo_channel, FALSE, NULL);
 	g_io_channel_unref(plugin_data->fifo_channel);
 	close(plugin_data->fifo_fd);
-	unlink(FIFO_PATH);
+
+        char *pipe_filename=get_fifo_filename();
+        if (pipe_filename) {
+            unlink(pipe_filename);
+            free(pipe_filename);
+        }
 
 	close_notification(plugin_data);
 
 	g_mutex_clear(&(plugin_data->lock));
 
 	g_free(plugin_data);
-
-        // remove the Pipe file
-	unlink(FIFO_PATH);
 }
 
 static void free_notification(notification_info_t *data)
