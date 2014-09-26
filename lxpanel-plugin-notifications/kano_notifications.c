@@ -138,7 +138,6 @@ static int plugin_constructor(Plugin *plugin, char **fp)
         if (pipe_filename) {
 
             // remove previous instance of the pipe
-            // FIXME: We are not being called during widget destructor
             unlink(pipe_filename);
 
             // Set access mode as wide as possible (this depends on current umask)
