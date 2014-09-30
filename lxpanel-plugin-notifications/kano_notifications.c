@@ -32,11 +32,12 @@
 #define ON_ICON_FILE "/usr/share/kano-widgets/icons/notifications-on.png"
 #define OFF_ICON_FILE "/usr/share/kano-widgets/icons/notifications-off.png"
 
-#define NOTIFICATION_IMAGE_WIDTH 280 // TODO fix image sizes
+#define NOTIFICATION_IMAGE_WIDTH 280
 #define NOTIFICATION_IMAGE_HEIGHT 170
 
-#define WINDOW_WIDTH NOTIFICATION_IMAGE_WIDTH
-#define WINDOW_HEIGHT (NOTIFICATION_IMAGE_HEIGHT + 90)
+#define PANEL_WIDTH NOTIFICATION_IMAGE_WIDTH
+#define PANEL_HEIGHT 90
+
 #define WINDOW_MARGIN_RIGHT 20
 #define WINDOW_MARGIN_BOTTOM 20
 
@@ -89,6 +90,7 @@ typedef struct {
 	gchar *image_path;
 	gchar *title;
 	gchar *byline;
+	gchar *command;
 } notification_info_t;
 
 static gboolean plugin_clicked(GtkWidget *, GdkEventButton *,
@@ -227,6 +229,7 @@ static void free_notification(notification_info_t *data)
 	g_free(data->image_path);
 	g_free(data->title);
 	g_free(data->byline);
+	g_free(data->command);
 	g_free(data);
 }
 
@@ -307,32 +310,32 @@ static notification_info_t *get_notification_by_id(gchar *id)
 		return data;
 	}
 
-    if (g_strcmp0(tokens[0], "world_notification") == 0) {
-        if (length < 2) {
-            g_strfreev(tokens);
-            return NULL;
-        }
+	if (g_strcmp0(tokens[0], "world_notification") == 0) {
+		if (length < 2) {
+			g_strfreev(tokens);
+			return NULL;
+		}
 
-        notification_info_t *data = g_new0(notification_info_t, 1);
+		notification_info_t *data = g_new0(notification_info_t, 1);
 
-        /* Allocate and set the title */
-        bufsize = strlen(WORLD_NOTIFICATION_TITLE);
-        data->title = g_new0(gchar, bufsize+1);
-        g_strlcpy(data->title, WORLD_NOTIFICATION_TITLE, bufsize+1);
+		/* Allocate and set the title */
+		bufsize = strlen(WORLD_NOTIFICATION_TITLE);
+		data->title = g_new0(gchar, bufsize+1);
+		g_strlcpy(data->title, WORLD_NOTIFICATION_TITLE, bufsize+1);
 
-        /* Allocate and set the byline */
-        bufsize = strlen(WORLD_NOTIFICATION_BYLINE) + strlen(tokens[1]);
-        data->byline = g_new0(gchar, bufsize+1);
-        g_sprintf(data->byline, WORLD_NOTIFICATION_BYLINE, tokens[1]);
+		/* Allocate and set the byline */
+		bufsize = strlen(WORLD_NOTIFICATION_BYLINE) + strlen(tokens[1]);
+		data->byline = g_new0(gchar, bufsize+1);
+		g_sprintf(data->byline, WORLD_NOTIFICATION_BYLINE, tokens[1]);
 
-        /* Allocate and set image_path */
-        bufsize += strlen(WORLD_IMG_BASE_PATH);
-        data->image_path = g_new0(gchar, bufsize+1);
-        g_sprintf(data->image_path, WORLD_IMG_BASE_PATH);
+		/* Allocate and set image_path */
+		bufsize += strlen(WORLD_IMG_BASE_PATH);
+		data->image_path = g_new0(gchar, bufsize+1);
+		g_sprintf(data->image_path, WORLD_IMG_BASE_PATH);
 
-        g_strfreev(tokens);
-        return data;
-    }
+		g_strfreev(tokens);
+		return data;
+	}
 
 	/* badge, environment, or avatar */
 	if (length < 3) {
@@ -398,6 +401,62 @@ static notification_info_t *get_notification_by_id(gchar *id)
 	return data;
 }
 
+static notification_info_t *get_json_notification(gchar *json_data)
+{
+	JSON_Value *root_value = NULL;
+	JSON_Object *root = NULL;
+	const char *title = NULL;
+	const char *byline = NULL;
+	const char *image_path = NULL;
+	const char *command = NULL;
+
+	root_value = json_parse_string(json_data);
+	if (json_value_get_type(root_value) != JSONObject) {
+		json_value_free(root_value);
+		return NULL;
+	}
+
+	root = json_value_get_object(root_value);
+
+	title = json_object_get_string(root, "title");
+	if (!title) {
+		json_value_free(root_value);
+		return NULL;
+	}
+
+	byline = json_object_get_string(root, "byline");
+	if (!byline) {
+		json_value_free(root_value);
+		return NULL;
+	}
+
+	image_path = json_object_get_string(root, "image");
+	command = json_object_get_string(root, "command");
+
+
+	notification_info_t *data = g_new0(notification_info_t, 1);
+
+	data->title = g_new0(gchar, strlen(title) + 1);
+	g_strlcpy(data->title, title, strlen(title) + 1);
+
+	data->byline = g_new0(gchar, strlen(byline) + 1);
+	g_strlcpy(data->byline, byline, strlen(byline) + 1);
+
+	if (image_path) {
+		data->image_path = g_new0(gchar, strlen(image_path) + 1);
+		g_strlcpy(data->image_path, image_path, strlen(image_path) + 1);
+	}
+
+	if (command) {
+		data->command = g_new0(gchar, strlen(command) + 1);
+		g_strlcpy(data->command, command, strlen(command) + 1);
+	}
+
+	json_value_free(root_value);
+
+	return data;
+}
+
 static gboolean hide_notification_window(GtkWidget *w, GdkEventButton *event,
 				  kano_notifications_t *plugin_data)
 {
@@ -415,15 +474,26 @@ static void show_notification_window(kano_notifications_t *plugin_data,
 {
 	GtkWidget *win = gtk_window_new(GTK_WINDOW_POPUP);
 	plugin_data->window = win;
-	gtk_window_set_default_size(GTK_WINDOW(win), WINDOW_WIDTH, WINDOW_HEIGHT);
+
+	int win_width, win_height;
+	if (notification->image_path)
+	{
+		win_width = NOTIFICATION_IMAGE_WIDTH;
+		win_height = NOTIFICATION_IMAGE_HEIGHT + PANEL_HEIGHT;
+	} else {
+		win_width = PANEL_WIDTH;
+		win_height = PANEL_HEIGHT;
+	}
+
+	gtk_window_set_default_size(GTK_WINDOW(win), win_width, win_height);
 	gtk_window_set_position(GTK_WINDOW(win), GTK_WIN_POS_CENTER);
 
 	/* TODO Positioning doesn't take into account the position of the
 	   panel itself. */
 	gtk_window_set_gravity(GTK_WINDOW(win), GDK_GRAVITY_SOUTH_EAST);
 	gtk_window_move(GTK_WINDOW(win),
-		gdk_screen_width() - WINDOW_WIDTH - WINDOW_MARGIN_RIGHT,
-		gdk_screen_height() - WINDOW_HEIGHT - panel->height
+		gdk_screen_width() - win_width - WINDOW_MARGIN_RIGHT,
+		gdk_screen_height() - win_height - panel->height
 		- WINDOW_MARGIN_BOTTOM);
 
 	GtkStyle *style;
@@ -431,17 +501,19 @@ static void show_notification_window(kano_notifications_t *plugin_data,
 	gdk_color_parse("white", &white);
 	gtk_widget_modify_bg(win, GTK_STATE_NORMAL, &white);
 
-	GtkWidget *image = gtk_image_new_from_file(notification->image_path);
-	gtk_widget_add_events(image, GDK_BUTTON_RELEASE_MASK);
-
 	GtkWidget *eventbox = gtk_event_box_new();
 	gtk_signal_connect(GTK_OBJECT(eventbox), "button-release-event",
                      GTK_SIGNAL_FUNC(hide_notification_window), plugin_data);
 
 	GtkWidget *box = gtk_vbox_new(FALSE, 0);
 	gtk_container_add(GTK_CONTAINER(eventbox), GTK_WIDGET(box));
-	gtk_box_pack_start(GTK_BOX(box), GTK_WIDGET(image),
-			   FALSE, FALSE, 0);
+
+	if (notification->image_path) {
+		GtkWidget *image = gtk_image_new_from_file(notification->image_path);
+		gtk_widget_add_events(image, GDK_BUTTON_RELEASE_MASK);
+		gtk_box_pack_start(GTK_BOX(box), GTK_WIDGET(image),
+				   FALSE, FALSE, 0);
+	}
 
 	gtk_container_add(GTK_CONTAINER(win), GTK_WIDGET(eventbox));
 
@@ -565,7 +637,12 @@ static gboolean io_watch_cb(GIOChannel *source, GIOCondition cond, gpointer data
 			return TRUE;
 		}
 
-		notification_info_t *data = get_notification_by_id(line);
+		/* See if the notification is a JSON */
+		notification_info_t *data = get_json_notification(line);
+
+		if (!data)
+			data = get_notification_by_id(line);
+
 		if (data) {
 			g_mutex_lock(&(plugin_data->lock));
 
