@@ -70,6 +70,7 @@ Panel *panel;
 
 typedef struct {
 	gboolean enabled;
+	gboolean paused;
 
 	int fifo_fd;
 	GIOChannel *fifo_channel;
@@ -133,6 +134,7 @@ static int plugin_constructor(Plugin *plugin, char **fp)
 	plugin_data->queue = NULL;
 
 	plugin_data->enabled = TRUE; // TODO load from the configuration
+	plugin_data->paused = FALSE; // TODO load from the configuration
 
 	g_mutex_init(&(plugin_data->lock));
 
@@ -541,16 +543,38 @@ static gboolean io_watch_cb(GIOChannel *source, GIOCondition cond, gpointer data
 			return TRUE;
 		}
 
+		if (g_strcmp0(line, "pause") == 0) {
+			g_mutex_lock(&(plugin_data->lock));
+			plugin_data->paused = TRUE;
+			g_mutex_unlock(&(plugin_data->lock));
+			g_free(line);
+			return TRUE;
+		}
+
+		if (g_strcmp0(line, "resume") == 0) {
+			g_mutex_lock(&(plugin_data->lock));
+			plugin_data->paused = FALSE;
+
+			if (g_list_length(plugin_data->queue) > 0) {
+				notification_info_t *first = g_list_nth_data(plugin_data->queue, 0);
+				show_notification_window(plugin_data, first);
+			}
+
+			g_mutex_unlock(&(plugin_data->lock));
+			g_free(line);
+			return TRUE;
+		}
+
 		notification_info_t *data = get_notification_by_id(line);
 		if (data) {
 			g_mutex_lock(&(plugin_data->lock));
 
 			plugin_data->queue = g_list_append(plugin_data->queue, data);
 
-			if (g_list_length(plugin_data->queue) <= 1) {
+			if (g_list_length(plugin_data->queue) <= 1 &&
+			    !plugin_data->paused)
 				show_notification_window(plugin_data, data);
-				launch_cmd("aplay /usr/share/kano-media/sounds/kano_level_up.wav");
-			}
+				//launch_cmd("aplay /usr/share/kano-media/sounds/kano_level_up.wav");
 
 			g_mutex_unlock(&(plugin_data->lock));
 		}
