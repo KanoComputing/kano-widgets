@@ -71,6 +71,11 @@ Panel *panel;
 typedef struct {
 	gboolean enabled;
 
+        // paused means notifications are still accepted and queued
+        // but they are not displayed to the end user until it is resumed.
+        // see pipe verbs "pause" and "resume".
+	gboolean paused;
+
 	int fifo_fd;
 	GIOChannel *fifo_channel;
 	guint watch_id;
@@ -88,6 +93,7 @@ typedef struct {
 	gchar *image_path;
 	gchar *title;
 	gchar *byline;
+        gboolean displayed;
 } notification_info_t;
 
 static gboolean plugin_clicked(GtkWidget *, GdkEventButton *,
@@ -133,6 +139,7 @@ static int plugin_constructor(Plugin *plugin, char **fp)
 	plugin_data->queue = NULL;
 
 	plugin_data->enabled = TRUE; // TODO load from the configuration
+	plugin_data->paused = FALSE; // TODO load from the configuration
 
 	g_mutex_init(&(plugin_data->lock));
 
@@ -262,7 +269,7 @@ static void get_award_byline(gchar *json_file, gchar *key,
 	json_value_free(root_value);
 }
 
-static notification_info_t *get_notification_by_id(gchar *id)
+static notification_info_t *get_notification_by_id(gchar *id, kano_notifications_t *plugin_data, gboolean *b_append)
 {
 	gchar **tokens = g_strsplit(id, ":", 0);
 	gchar **iter;
@@ -276,6 +283,30 @@ static notification_info_t *get_notification_by_id(gchar *id)
 		g_strfreev(tokens);
 		return NULL;
 	}
+
+
+	if (g_strcmp0(tokens[0], "pause") == 0) {
+            g_mutex_lock(&(plugin_data->lock));
+            plugin_data->paused = TRUE;
+            g_mutex_unlock(&(plugin_data->lock));
+            return NULL;
+        }
+
+	if (g_strcmp0(tokens[0], "resume") == 0) {
+            g_mutex_lock(&(plugin_data->lock));
+            plugin_data->paused = FALSE;
+            g_mutex_unlock(&(plugin_data->lock));
+
+            // Return the last notification from the queue, if any,
+            // so that notification UI alerts retake their jazz.
+            if (b_append) {
+                *b_append = FALSE;
+            }
+
+            notification_info_t *last_notification = g_list_nth_data(plugin_data->queue, 0);
+            return last_notification;
+        }
+
 
 	if (g_strcmp0(tokens[0], "level") == 0) {
 		if (length < 2) {
@@ -496,8 +527,9 @@ static gboolean close_notification(kano_notifications_t *plugin_data)
 
 
 		if (g_list_length(plugin_data->queue) >= 1) {
+                        // process the next notification in the queue if there is any
 			notification_info_t *notification = g_list_nth_data(plugin_data->queue, 0);
-			show_notification_window(plugin_data, notification);
+                        show_notification_window(plugin_data, notification);
 		}
 
 		g_mutex_unlock(&(plugin_data->lock));
@@ -526,6 +558,7 @@ static void launch_cmd(const char *cmd)
 
 static gboolean io_watch_cb(GIOChannel *source, GIOCondition cond, gpointer data)
 {
+        // read from the pipe and process the notification message
 	kano_notifications_t *plugin_data = (kano_notifications_t *)data;
 
 	gchar *line = NULL;
@@ -541,20 +574,33 @@ static gboolean io_watch_cb(GIOChannel *source, GIOCondition cond, gpointer data
 			return TRUE;
 		}
 
-		notification_info_t *data = get_notification_by_id(line);
+                gboolean b_append=TRUE;
+		notification_info_t *data = get_notification_by_id(line, plugin_data, &b_append);
 		if (data) {
 			g_mutex_lock(&(plugin_data->lock));
 
-			plugin_data->queue = g_list_append(plugin_data->queue, data);
+                        // this is a new notification message, add it to the queure
+                        // otherwise it is a previously queued notification, this covers those queued via a "pause" verb
+                        if (b_append) {
+                            plugin_data->queue = g_list_append(plugin_data->queue, data);
+                        }
 
-			if (g_list_length(plugin_data->queue) <= 1) {
+			if (plugin_data->paused == FALSE) {
+
+                                // show the notification to the end user.
+                                // the sound will be played for the first event only.
 				show_notification_window(plugin_data, data);
-				launch_cmd("aplay /usr/share/kano-media/sounds/kano_level_up.wav");
+
+                                if (g_ascii_strncasecmp (data->byline, LEVEL_TITLE, strlen(LEVEL_TITLE)) == 0) {
+                                    // Sounds are only played for "level up" notifications
+                                    // FIXME: Move this out of the mutex critital section scope
+                                    launch_cmd("aplay /usr/share/kano-media/sounds/kano_level_up.wav");
+                                    data->displayed = TRUE;
+                                }
 			}
 
 			g_mutex_unlock(&(plugin_data->lock));
 		}
-
 		g_free(line);
 	}
 
