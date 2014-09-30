@@ -269,7 +269,7 @@ static void get_award_byline(gchar *json_file, gchar *key,
 	json_value_free(root_value);
 }
 
-static notification_info_t *get_notification_by_id(gchar *id, kano_notifications_t *plugin_data, gboolean *b_append)
+static notification_info_t *get_notification_by_id(gchar *id, kano_notifications_t *plugin_data, gboolean *b_resumed)
 {
 	gchar **tokens = g_strsplit(id, ":", 0);
 	gchar **iter;
@@ -299,10 +299,10 @@ static notification_info_t *get_notification_by_id(gchar *id, kano_notifications
 
             // Return the last notification from the queue, if any,
             // so that notification UI alerts retake their jazz.
-            if (b_append) {
-                *b_append = FALSE;
+            if (b_resumed) {
+                *b_resumed = TRUE;
             }
-
+            
             notification_info_t *last_notification = g_list_nth_data(plugin_data->queue, 0);
             return last_notification;
         }
@@ -574,30 +574,30 @@ static gboolean io_watch_cb(GIOChannel *source, GIOCondition cond, gpointer data
 			return TRUE;
 		}
 
-                gboolean b_append=TRUE;
-		notification_info_t *data = get_notification_by_id(line, plugin_data, &b_append);
+                gboolean b_resumed=FALSE;
+		notification_info_t *data = get_notification_by_id(line, plugin_data, &b_resumed);
 		if (data) {
 			g_mutex_lock(&(plugin_data->lock));
 
                         // this is a new notification message, add it to the queure
                         // otherwise it is a previously queued notification, this covers those queued via a "pause" verb
-                        if (b_append) {
+                        if (b_resumed==FALSE) {
                             plugin_data->queue = g_list_append(plugin_data->queue, data);
                         }
 
-			if (plugin_data->paused == FALSE) {
+                        // Display the notification window if necessary
+                        // FIXME: Without the below if statement, popups get blocked and never disappear
+                        // Are we holding many queues each with 1 notification event data?
+                        if (g_list_length(plugin_data->queue) <= 1) {
+                            show_notification_window(plugin_data, data);
+                        }
 
-                                // show the notification to the end user.
-                                // the sound will be played for the first event only.
-				show_notification_window(plugin_data, data);
-
-                                if (g_ascii_strncasecmp (data->byline, LEVEL_TITLE, strlen(LEVEL_TITLE)) == 0) {
-                                    // Sounds are only played for "level up" notifications
-                                    // FIXME: Move this out of the mutex critital section scope
-                                    launch_cmd("aplay /usr/share/kano-media/sounds/kano_level_up.wav");
-                                    data->displayed = TRUE;
-                                }
-			}
+                        if (g_ascii_strncasecmp (data->byline, LEVEL_TITLE, strlen(LEVEL_TITLE)) == 0) {
+                            // Sounds are only played for "level up" notifications
+                            // FIXME: Move this out of the mutex critital section scope
+                            launch_cmd("aplay /usr/share/kano-media/sounds/kano_level_up.wav");
+                            data->displayed = TRUE;
+                        }
 
 			g_mutex_unlock(&(plugin_data->lock));
 		}
