@@ -76,6 +76,9 @@ typedef struct {
         // see pipe verbs "pause" and "resume".
 	gboolean paused;
 
+        // keeps the time the last alert was displayed to the user
+        time_t time_last_alert;
+
 	int fifo_fd;
 	GIOChannel *fifo_channel;
 	guint watch_id;
@@ -94,6 +97,7 @@ typedef struct {
 	gchar *title;
 	gchar *byline;
         gboolean displayed;
+        gboolean play_sound;
 } notification_info_t;
 
 static gboolean plugin_clicked(GtkWidget *, GdkEventButton *,
@@ -105,6 +109,8 @@ static int plugin_constructor(Plugin *plugin, char **fp);
 static void plugin_destructor(Plugin *p);
 
 gchar *get_fifo_filename(void);
+
+static void launch_cmd(const char *cmd);
 
 
 gchar *get_fifo_filename(void)
@@ -140,6 +146,7 @@ static int plugin_constructor(Plugin *plugin, char **fp)
 
 	plugin_data->enabled = TRUE; // TODO load from the configuration
 	plugin_data->paused = FALSE; // TODO load from the configuration
+        plugin_data->time_last_alert = 0L;
 
 	g_mutex_init(&(plugin_data->lock));
 
@@ -332,6 +339,9 @@ static notification_info_t *get_notification_by_id(gchar *id, kano_notifications
 		data->image_path = g_new0(gchar, bufsize+1);
 		g_sprintf(data->image_path, LEVEL_IMG_BASE_PATH, tokens[0], tokens[1]);
 
+                data->displayed=FALSE;
+                data->play_sound=FALSE;
+
 		g_strfreev(tokens);
 		return data;
 	}
@@ -359,6 +369,9 @@ static notification_info_t *get_notification_by_id(gchar *id, kano_notifications
         data->image_path = g_new0(gchar, bufsize+1);
         g_sprintf(data->image_path, WORLD_IMG_BASE_PATH);
 
+        data->displayed=FALSE;
+        data->play_sound=FALSE;
+
         g_strfreev(tokens);
         return data;
     }
@@ -376,16 +389,19 @@ static notification_info_t *get_notification_by_id(gchar *id, kano_notifications
 		bufsize = strlen(BADGE_TITLE);
 		data->title = g_new0(gchar, bufsize+1);
 		g_strlcpy(data->title, BADGE_TITLE, bufsize+1);
+                data->play_sound=TRUE;
 	} else if (g_strcmp0(tokens[0], "environments") == 0) {
 		/* Allocate and set the title */
 		bufsize = strlen(ENV_TITLE);
 		data->title = g_new0(gchar, bufsize+1);
 		g_strlcpy(data->title, ENV_TITLE, bufsize+1);
+                data->play_sound=TRUE;
 	} else if (g_strcmp0(tokens[0], "avatars") == 0) {
 		/* Allocate and set the title */
 		bufsize = strlen(AVATAR_TITLE);
 		data->title = g_new0(gchar, bufsize+1);
 		g_strlcpy(data->title, AVATAR_TITLE, bufsize+1);
+                data->play_sound=TRUE;
 	} else {
 		g_strfreev(tokens);
 		free_notification(data);
@@ -422,6 +438,8 @@ static notification_info_t *get_notification_by_id(gchar *id, kano_notifications
 		data->image_path = g_new0(gchar, bufsize+1);
 		g_sprintf(data->image_path, AWARD_IMG_BASE_PATH, tokens[0], tokens[1], tokens[2]);
 	}
+
+        data->displayed=FALSE;
 
 	g_strfreev(tokens);
 	return data;
@@ -504,7 +522,6 @@ static void show_notification_window(kano_notifications_t *plugin_data,
 
 	gtk_box_pack_start(GTK_BOX(box), GTK_WIDGET(labels),
 			   TRUE, TRUE, 0);
-
 
 	gtk_widget_show_all(win);
 
@@ -589,17 +606,26 @@ static gboolean io_watch_cb(GIOChannel *source, GIOCondition cond, gpointer data
                         // FIXME: Without the below if statement, popups get blocked and never disappear
                         // Are we holding many queues each with 1 notification event data?
                         if (g_list_length(plugin_data->queue) <= 1) {
-                            show_notification_window(plugin_data, data);
-                        }
 
-                        if (g_ascii_strncasecmp (data->byline, LEVEL_TITLE, strlen(LEVEL_TITLE)) == 0) {
-                            // Sounds are only played for "level up" notifications
-                            // FIXME: Move this out of the mutex critital section scope
-                            launch_cmd("aplay /usr/share/kano-media/sounds/kano_level_up.wav");
+                            // Play sound if needed by the notification and last time is not too recent
+                            // TODO: Extract the 5 seconds into a configuration file
+                            time_t time_now;
+                            time(&time_now);
+
+                            if (data->play_sound==TRUE &&
+                                (!plugin_data->time_last_alert || 
+                                 (plugin_data->time_last_alert && ((time_now - plugin_data->time_last_alert) > 5)))) {
+
+                                time(&plugin_data->time_last_alert);
+                                launch_cmd("aplay /usr/share/kano-media/sounds/kano_level_up.wav");
+                            }
+
+                            show_notification_window(plugin_data, data);
                             data->displayed = TRUE;
                         }
 
 			g_mutex_unlock(&(plugin_data->lock));
+
 		}
 		g_free(line);
 	}
