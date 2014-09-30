@@ -71,6 +71,14 @@ Panel *panel;
 typedef struct {
 	gboolean enabled;
 
+        // paused means notifications are still accepted and queued
+        // but they are not displayed to the end user until it is resumed.
+        // see pipe verbs "pause" and "resume".
+	gboolean paused;
+
+        // keeps the time the last alert was displayed to the user
+        time_t time_last_alert;
+
 	int fifo_fd;
 	GIOChannel *fifo_channel;
 	guint watch_id;
@@ -88,6 +96,8 @@ typedef struct {
 	gchar *image_path;
 	gchar *title;
 	gchar *byline;
+        gboolean displayed;
+        gboolean play_sound;
 } notification_info_t;
 
 static gboolean plugin_clicked(GtkWidget *, GdkEventButton *,
@@ -99,6 +109,8 @@ static int plugin_constructor(Plugin *plugin, char **fp);
 static void plugin_destructor(Plugin *p);
 
 gchar *get_fifo_filename(void);
+
+static void launch_cmd(const char *cmd);
 
 
 gchar *get_fifo_filename(void)
@@ -133,6 +145,8 @@ static int plugin_constructor(Plugin *plugin, char **fp)
 	plugin_data->queue = NULL;
 
 	plugin_data->enabled = TRUE; // TODO load from the configuration
+	plugin_data->paused = FALSE; // TODO load from the configuration
+        plugin_data->time_last_alert = 0L;
 
 	g_mutex_init(&(plugin_data->lock));
 
@@ -262,7 +276,7 @@ static void get_award_byline(gchar *json_file, gchar *key,
 	json_value_free(root_value);
 }
 
-static notification_info_t *get_notification_by_id(gchar *id)
+static notification_info_t *get_notification_by_id(gchar *id, kano_notifications_t *plugin_data, gboolean *b_resumed)
 {
 	gchar **tokens = g_strsplit(id, ":", 0);
 	gchar **iter;
@@ -276,6 +290,30 @@ static notification_info_t *get_notification_by_id(gchar *id)
 		g_strfreev(tokens);
 		return NULL;
 	}
+
+
+	if (g_strcmp0(tokens[0], "pause") == 0) {
+            g_mutex_lock(&(plugin_data->lock));
+            plugin_data->paused = TRUE;
+            g_mutex_unlock(&(plugin_data->lock));
+            return NULL;
+        }
+
+	if (g_strcmp0(tokens[0], "resume") == 0) {
+            g_mutex_lock(&(plugin_data->lock));
+            plugin_data->paused = FALSE;
+            g_mutex_unlock(&(plugin_data->lock));
+
+            // Return the last notification from the queue, if any,
+            // so that notification UI alerts retake their jazz.
+            if (b_resumed) {
+                *b_resumed = TRUE;
+            }
+            
+            notification_info_t *last_notification = g_list_nth_data(plugin_data->queue, 0);
+            return last_notification;
+        }
+
 
 	if (g_strcmp0(tokens[0], "level") == 0) {
 		if (length < 2) {
@@ -300,6 +338,9 @@ static notification_info_t *get_notification_by_id(gchar *id)
 		bufsize += strlen(tokens[0]) + strlen(tokens[1]);
 		data->image_path = g_new0(gchar, bufsize+1);
 		g_sprintf(data->image_path, LEVEL_IMG_BASE_PATH, tokens[0], tokens[1]);
+
+                data->displayed=FALSE;
+                data->play_sound=FALSE;
 
 		g_strfreev(tokens);
 		return data;
@@ -328,6 +369,9 @@ static notification_info_t *get_notification_by_id(gchar *id)
         data->image_path = g_new0(gchar, bufsize+1);
         g_sprintf(data->image_path, WORLD_IMG_BASE_PATH);
 
+        data->displayed=FALSE;
+        data->play_sound=FALSE;
+
         g_strfreev(tokens);
         return data;
     }
@@ -345,16 +389,19 @@ static notification_info_t *get_notification_by_id(gchar *id)
 		bufsize = strlen(BADGE_TITLE);
 		data->title = g_new0(gchar, bufsize+1);
 		g_strlcpy(data->title, BADGE_TITLE, bufsize+1);
+                data->play_sound=TRUE;
 	} else if (g_strcmp0(tokens[0], "environments") == 0) {
 		/* Allocate and set the title */
 		bufsize = strlen(ENV_TITLE);
 		data->title = g_new0(gchar, bufsize+1);
 		g_strlcpy(data->title, ENV_TITLE, bufsize+1);
+                data->play_sound=TRUE;
 	} else if (g_strcmp0(tokens[0], "avatars") == 0) {
 		/* Allocate and set the title */
 		bufsize = strlen(AVATAR_TITLE);
 		data->title = g_new0(gchar, bufsize+1);
 		g_strlcpy(data->title, AVATAR_TITLE, bufsize+1);
+                data->play_sound=TRUE;
 	} else {
 		g_strfreev(tokens);
 		free_notification(data);
@@ -391,6 +438,8 @@ static notification_info_t *get_notification_by_id(gchar *id)
 		data->image_path = g_new0(gchar, bufsize+1);
 		g_sprintf(data->image_path, AWARD_IMG_BASE_PATH, tokens[0], tokens[1], tokens[2]);
 	}
+
+        data->displayed=FALSE;
 
 	g_strfreev(tokens);
 	return data;
@@ -474,7 +523,6 @@ static void show_notification_window(kano_notifications_t *plugin_data,
 	gtk_box_pack_start(GTK_BOX(box), GTK_WIDGET(labels),
 			   TRUE, TRUE, 0);
 
-
 	gtk_widget_show_all(win);
 
 	plugin_data->window_timeout = g_timeout_add(6000,
@@ -496,8 +544,9 @@ static gboolean close_notification(kano_notifications_t *plugin_data)
 
 
 		if (g_list_length(plugin_data->queue) >= 1) {
+                        // process the next notification in the queue if there is any
 			notification_info_t *notification = g_list_nth_data(plugin_data->queue, 0);
-			show_notification_window(plugin_data, notification);
+                        show_notification_window(plugin_data, notification);
 		}
 
 		g_mutex_unlock(&(plugin_data->lock));
@@ -526,6 +575,7 @@ static void launch_cmd(const char *cmd)
 
 static gboolean io_watch_cb(GIOChannel *source, GIOCondition cond, gpointer data)
 {
+        // read from the pipe and process the notification message
 	kano_notifications_t *plugin_data = (kano_notifications_t *)data;
 
 	gchar *line = NULL;
@@ -541,20 +591,42 @@ static gboolean io_watch_cb(GIOChannel *source, GIOCondition cond, gpointer data
 			return TRUE;
 		}
 
-		notification_info_t *data = get_notification_by_id(line);
+                gboolean b_resumed=FALSE;
+		notification_info_t *data = get_notification_by_id(line, plugin_data, &b_resumed);
 		if (data) {
 			g_mutex_lock(&(plugin_data->lock));
 
-			plugin_data->queue = g_list_append(plugin_data->queue, data);
+                        // this is a new notification message, add it to the queure
+                        // otherwise it is a previously queued notification, this covers those queued via a "pause" verb
+                        if (b_resumed==FALSE) {
+                            plugin_data->queue = g_list_append(plugin_data->queue, data);
+                        }
 
-			if (g_list_length(plugin_data->queue) <= 1) {
-				show_notification_window(plugin_data, data);
-				launch_cmd("aplay /usr/share/kano-media/sounds/kano_level_up.wav");
-			}
+                        // Display the notification window if necessary
+                        // FIXME: Without the below if statement, popups get blocked and never disappear
+                        // Are we holding many queues each with 1 notification event data?
+                        if (g_list_length(plugin_data->queue) <= 1) {
+
+                            // Play sound if needed by the notification and last time is not too recent
+                            // TODO: Extract the 5 seconds into a configuration file
+                            time_t time_now;
+                            time(&time_now);
+
+                            if (data->play_sound==TRUE &&
+                                (!plugin_data->time_last_alert || 
+                                 (plugin_data->time_last_alert && ((time_now - plugin_data->time_last_alert) > 5)))) {
+
+                                time(&plugin_data->time_last_alert);
+                                launch_cmd("aplay /usr/share/kano-media/sounds/kano_level_up.wav");
+                            }
+
+                            show_notification_window(plugin_data, data);
+                            data->displayed = TRUE;
+                        }
 
 			g_mutex_unlock(&(plugin_data->lock));
-		}
 
+		}
 		g_free(line);
 	}
 
