@@ -33,6 +33,8 @@
 #define OFF_ICON_FILE "/usr/share/kano-widgets/icons/notifications-off.png"
 #define RIGHT_ARROW "/usr/share/kano-widgets/icons/arrow-right.png"
 
+#define CHEER_SOUND "/usr/share/kano-media/sounds/kano_level_up.wav"
+
 #define NOTIFICATION_IMAGE_WIDTH 280
 #define NOTIFICATION_IMAGE_HEIGHT 170
 
@@ -92,6 +94,7 @@ typedef struct {
 	gchar *title;
 	gchar *byline;
 	gchar *command;
+	gchar *sound;
 } notification_info_t;
 
 /* This struct is used exclusively for passing user data to GTK signals. */
@@ -238,6 +241,7 @@ static void free_notification(notification_info_t *data)
 	g_free(data->title);
 	g_free(data->byline);
 	g_free(data->command);
+	g_free(data->sound);
 	g_free(data);
 }
 
@@ -314,10 +318,16 @@ static notification_info_t *get_notification_by_id(gchar *id)
 		data->image_path = g_new0(gchar, bufsize+1);
 		g_sprintf(data->image_path, LEVEL_IMG_BASE_PATH, tokens[0], tokens[1]);
 
+		/* Allocate and set the sound */
+		bufsize = strlen(CHEER_SOUND);
+		data->sound = g_new0(gchar, bufsize+1);
+		g_strlcpy(data->sound, CHEER_SOUND, bufsize+1);
+
 		g_strfreev(tokens);
 		return data;
 	}
 
+	/* TODO This needs to be removed at some point */
 	if (g_strcmp0(tokens[0], "world_notification") == 0) {
 		if (length < 2) {
 			g_strfreev(tokens);
@@ -405,6 +415,11 @@ static notification_info_t *get_notification_by_id(gchar *id)
 		g_sprintf(data->image_path, AWARD_IMG_BASE_PATH, tokens[0], tokens[1], tokens[2]);
 	}
 
+	/* Allocate and set the sound */
+	bufsize = strlen(CHEER_SOUND);
+	data->sound = g_new0(gchar, bufsize+1);
+	g_strlcpy(data->sound, CHEER_SOUND, bufsize+1);
+
 	g_strfreev(tokens);
 	return data;
 }
@@ -417,6 +432,7 @@ static notification_info_t *get_json_notification(gchar *json_data)
 	const char *byline = NULL;
 	const char *image_path = NULL;
 	const char *command = NULL;
+	const char *sound = NULL;
 
 	root_value = json_parse_string(json_data);
 	if (json_value_get_type(root_value) != JSONObject) {
@@ -440,7 +456,7 @@ static notification_info_t *get_json_notification(gchar *json_data)
 
 	image_path = json_object_get_string(root, "image");
 	command = json_object_get_string(root, "command");
-
+	sound = json_object_get_string(root, "sound");
 
 	notification_info_t *data = g_new0(notification_info_t, 1);
 
@@ -458,6 +474,11 @@ static notification_info_t *get_json_notification(gchar *json_data)
 	if (command) {
 		data->command = g_new0(gchar, strlen(command) + 1);
 		g_strlcpy(data->command, command, strlen(command) + 1);
+	}
+
+	if (sound) {
+		data->sound = g_new0(gchar, strlen(sound) + 1);
+		g_strlcpy(data->sound, sound, strlen(sound) + 1);
 	}
 
 	json_value_free(root_value);
@@ -630,6 +651,15 @@ static void show_notification_window(kano_notifications_t *plugin_data,
 
 	gtk_widget_show_all(win);
 
+	/* Play the sound */
+	if (notification->sound) {
+		int bufsize = strlen("aplay") + strlen(notification->sound) + 2;
+		gchar *aplay_cmd = g_new0(gchar, bufsize);
+		g_sprintf(aplay_cmd, "aplay %s", notification->sound);
+		launch_cmd(aplay_cmd);
+		g_free(aplay_cmd);
+	}
+
 	plugin_data->window_timeout = g_timeout_add(6000,
 				(GSourceFunc) close_notification,
 				(gpointer) plugin_data);
@@ -730,7 +760,6 @@ static gboolean io_watch_cb(GIOChannel *source, GIOCondition cond, gpointer data
 			if (g_list_length(plugin_data->queue) <= 1 &&
 			    !plugin_data->paused)
 				show_notification_window(plugin_data, data);
-				//launch_cmd("aplay /usr/share/kano-media/sounds/kano_level_up.wav");
 
 			g_mutex_unlock(&(plugin_data->lock));
 		}
