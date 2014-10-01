@@ -31,6 +31,7 @@
 #define FIFO_FILENAME ".kano-notifications.fifo"
 #define ON_ICON_FILE "/usr/share/kano-widgets/icons/notifications-on.png"
 #define OFF_ICON_FILE "/usr/share/kano-widgets/icons/notifications-off.png"
+#define RIGHT_ARROW "/usr/share/kano-widgets/icons/arrow-right.png"
 
 #define NOTIFICATION_IMAGE_WIDTH 280
 #define NOTIFICATION_IMAGE_HEIGHT 170
@@ -93,6 +94,12 @@ typedef struct {
 	gchar *command;
 } notification_info_t;
 
+/* This struct is used exclusively for passing user data to GTK signals. */
+typedef struct {
+	notification_info_t *notification;
+	kano_notifications_t *plugin_data;
+} gtk_user_data_t;
+
 static gboolean plugin_clicked(GtkWidget *, GdkEventButton *,
 			       kano_notifications_t *);
 static gboolean io_watch_cb(GIOChannel *source, GIOCondition cond, gpointer data);
@@ -100,6 +107,7 @@ static gboolean close_notification(kano_notifications_t *plugin_data);
 
 static int plugin_constructor(Plugin *plugin, char **fp);
 static void plugin_destructor(Plugin *p);
+static void launch_cmd(const char *cmd);
 
 gchar *get_fifo_filename(void);
 
@@ -457,14 +465,55 @@ static notification_info_t *get_json_notification(gchar *json_data)
 	return data;
 }
 
-static gboolean hide_notification_window(GtkWidget *w, GdkEventButton *event,
-				  kano_notifications_t *plugin_data)
+static void hide_notification_window(kano_notifications_t *plugin_data)
 {
 	if (g_mutex_trylock(&(plugin_data->lock)) == TRUE) {
 		g_source_remove(plugin_data->window_timeout);
 		g_mutex_unlock(&(plugin_data->lock));
 		close_notification(plugin_data);
 	}
+}
+
+static gboolean eventbox_click_cb(GtkWidget *w, GdkEventButton *event,
+				  kano_notifications_t *plugin_data)
+{
+	hide_notification_window(plugin_data);
+	return TRUE;
+}
+
+static gboolean button_realize_cb(GtkWidget *widget, void *data)
+{
+	GdkCursor *cursor;
+	cursor = gdk_cursor_new(GDK_HAND1);
+	gdk_window_set_cursor(widget->window, cursor);
+	gdk_flush();
+	gdk_cursor_destroy(cursor);
+
+	return TRUE;
+}
+
+static gboolean button_enter_cb(GtkWidget *widget, GdkEvent *event, void *data)
+{
+	GdkColor button_bg;
+	gdk_color_parse("#dddddd", &button_bg);
+	gtk_widget_modify_bg(widget, GTK_STATE_NORMAL, &button_bg);
+	return TRUE;
+}
+
+static gboolean button_leave_cb(GtkWidget *widget, GdkEvent *event, void *data)
+{
+	GdkColor button_bg;
+	gdk_color_parse("#f1f1f1", &button_bg);
+	gtk_widget_modify_bg(widget, GTK_STATE_NORMAL, &button_bg);
+	return TRUE;
+}
+
+static gboolean button_click_cb(GtkWidget *w, GdkEventButton *event,
+				gtk_user_data_t *user_data)
+{
+	launch_cmd(user_data->notification->command);
+	hide_notification_window(user_data->plugin_data);
+	g_free(user_data);
 
 	return TRUE;
 }
@@ -497,13 +546,13 @@ static void show_notification_window(kano_notifications_t *plugin_data,
 		- WINDOW_MARGIN_BOTTOM);
 
 	GtkStyle *style;
-	GdkColor white;
-	gdk_color_parse("white", &white);
-	gtk_widget_modify_bg(win, GTK_STATE_NORMAL, &white);
-
 	GtkWidget *eventbox = gtk_event_box_new();
 	gtk_signal_connect(GTK_OBJECT(eventbox), "button-release-event",
-                     GTK_SIGNAL_FUNC(hide_notification_window), plugin_data);
+                     GTK_SIGNAL_FUNC(eventbox_click_cb), plugin_data);
+
+	GdkColor white;
+	gdk_color_parse("white", &white);
+	gtk_widget_modify_bg(eventbox, GTK_STATE_NORMAL, &white);
 
 	GtkWidget *box = gtk_vbox_new(FALSE, 0);
 	gtk_container_add(GTK_CONTAINER(eventbox), GTK_WIDGET(box));
@@ -545,9 +594,39 @@ static void show_notification_window(kano_notifications_t *plugin_data,
 	gtk_box_pack_start(GTK_BOX(labels), GTK_WIDGET(byline_align),
 			   FALSE, FALSE, 0);
 
-	gtk_box_pack_start(GTK_BOX(box), GTK_WIDGET(labels),
+	GtkWidget *hbox = gtk_hbox_new(FALSE, 0);
+
+	gtk_box_pack_start(GTK_BOX(hbox), GTK_WIDGET(labels),
 			   TRUE, TRUE, 0);
 
+	/* Add the command button if there is a command */
+	if (notification->command && strlen(notification->command) > 0) {
+		GdkColor button_bg;
+		gdk_color_parse("#f1f1f1", &button_bg);
+		GtkWidget *arrow = gtk_image_new_from_file(RIGHT_ARROW);
+		GtkWidget *button = gtk_event_box_new();
+		gtk_widget_modify_bg(button, GTK_STATE_NORMAL, &button_bg);
+		gtk_container_add(GTK_CONTAINER(button), arrow);
+		gtk_widget_set_size_request(button, 44, 90);
+		gtk_signal_connect(GTK_OBJECT(button), "realize",
+			     GTK_SIGNAL_FUNC(button_realize_cb), NULL);
+		gtk_signal_connect(GTK_OBJECT(button), "enter-notify-event",
+			     GTK_SIGNAL_FUNC(button_enter_cb), NULL);
+		gtk_signal_connect(GTK_OBJECT(button), "leave-notify-event",
+			     GTK_SIGNAL_FUNC(button_leave_cb), NULL);
+
+		gtk_user_data_t *user_data = g_new0(gtk_user_data_t, 1);
+		user_data->notification = notification;
+		user_data->plugin_data = plugin_data;
+		gtk_signal_connect(GTK_OBJECT(button), "button-release-event",
+			     GTK_SIGNAL_FUNC(button_click_cb), user_data);
+
+		gtk_box_pack_start(GTK_BOX(hbox), GTK_WIDGET(button),
+				   FALSE, FALSE, 0);
+	}
+
+	gtk_box_pack_start(GTK_BOX(box), GTK_WIDGET(hbox),
+			   TRUE, TRUE, 0);
 
 	gtk_widget_show_all(win);
 
