@@ -31,12 +31,16 @@
 #define FIFO_FILENAME ".kano-notifications.fifo"
 #define ON_ICON_FILE "/usr/share/kano-widgets/icons/notifications-on.png"
 #define OFF_ICON_FILE "/usr/share/kano-widgets/icons/notifications-off.png"
+#define RIGHT_ARROW "/usr/share/kano-widgets/icons/arrow-right.png"
 
-#define NOTIFICATION_IMAGE_WIDTH 280 // TODO fix image sizes
+#define CHEER_SOUND "/usr/share/kano-media/sounds/kano_level_up.wav"
+
+#define NOTIFICATION_IMAGE_WIDTH 280
 #define NOTIFICATION_IMAGE_HEIGHT 170
 
-#define WINDOW_WIDTH NOTIFICATION_IMAGE_WIDTH
-#define WINDOW_HEIGHT (NOTIFICATION_IMAGE_HEIGHT + 90)
+#define PANEL_WIDTH NOTIFICATION_IMAGE_WIDTH
+#define PANEL_HEIGHT 90
+
 #define WINDOW_MARGIN_RIGHT 20
 #define WINDOW_MARGIN_BOTTOM 20
 
@@ -70,6 +74,7 @@ Panel *panel;
 
 typedef struct {
 	gboolean enabled;
+	gboolean paused;
 
 	int fifo_fd;
 	GIOChannel *fifo_channel;
@@ -88,7 +93,15 @@ typedef struct {
 	gchar *image_path;
 	gchar *title;
 	gchar *byline;
+	gchar *command;
+	gchar *sound;
 } notification_info_t;
+
+/* This struct is used exclusively for passing user data to GTK signals. */
+typedef struct {
+	notification_info_t *notification;
+	kano_notifications_t *plugin_data;
+} gtk_user_data_t;
 
 static gboolean plugin_clicked(GtkWidget *, GdkEventButton *,
 			       kano_notifications_t *);
@@ -97,6 +110,7 @@ static gboolean close_notification(kano_notifications_t *plugin_data);
 
 static int plugin_constructor(Plugin *plugin, char **fp);
 static void plugin_destructor(Plugin *p);
+static void launch_cmd(const char *cmd);
 
 gchar *get_fifo_filename(void);
 
@@ -133,6 +147,7 @@ static int plugin_constructor(Plugin *plugin, char **fp)
 	plugin_data->queue = NULL;
 
 	plugin_data->enabled = TRUE; // TODO load from the configuration
+	plugin_data->paused = FALSE; // TODO load from the configuration
 
 	g_mutex_init(&(plugin_data->lock));
 
@@ -225,6 +240,8 @@ static void free_notification(notification_info_t *data)
 	g_free(data->image_path);
 	g_free(data->title);
 	g_free(data->byline);
+	g_free(data->command);
+	g_free(data->sound);
 	g_free(data);
 }
 
@@ -301,36 +318,42 @@ static notification_info_t *get_notification_by_id(gchar *id)
 		data->image_path = g_new0(gchar, bufsize+1);
 		g_sprintf(data->image_path, LEVEL_IMG_BASE_PATH, tokens[0], tokens[1]);
 
+		/* Allocate and set the sound */
+		bufsize = strlen(CHEER_SOUND);
+		data->sound = g_new0(gchar, bufsize+1);
+		g_strlcpy(data->sound, CHEER_SOUND, bufsize+1);
+
 		g_strfreev(tokens);
 		return data;
 	}
 
-    if (g_strcmp0(tokens[0], "world_notification") == 0) {
-        if (length < 2) {
-            g_strfreev(tokens);
-            return NULL;
-        }
+	/* TODO This needs to be removed at some point */
+	if (g_strcmp0(tokens[0], "world_notification") == 0) {
+		if (length < 2) {
+			g_strfreev(tokens);
+			return NULL;
+		}
 
-        notification_info_t *data = g_new0(notification_info_t, 1);
+		notification_info_t *data = g_new0(notification_info_t, 1);
 
-        /* Allocate and set the title */
-        bufsize = strlen(WORLD_NOTIFICATION_TITLE);
-        data->title = g_new0(gchar, bufsize+1);
-        g_strlcpy(data->title, WORLD_NOTIFICATION_TITLE, bufsize+1);
+		/* Allocate and set the title */
+		bufsize = strlen(WORLD_NOTIFICATION_TITLE);
+		data->title = g_new0(gchar, bufsize+1);
+		g_strlcpy(data->title, WORLD_NOTIFICATION_TITLE, bufsize+1);
 
-        /* Allocate and set the byline */
-        bufsize = strlen(WORLD_NOTIFICATION_BYLINE) + strlen(tokens[1]);
-        data->byline = g_new0(gchar, bufsize+1);
-        g_sprintf(data->byline, WORLD_NOTIFICATION_BYLINE, tokens[1]);
+		/* Allocate and set the byline */
+		bufsize = strlen(WORLD_NOTIFICATION_BYLINE) + strlen(tokens[1]);
+		data->byline = g_new0(gchar, bufsize+1);
+		g_sprintf(data->byline, WORLD_NOTIFICATION_BYLINE, tokens[1]);
 
-        /* Allocate and set image_path */
-        bufsize += strlen(WORLD_IMG_BASE_PATH);
-        data->image_path = g_new0(gchar, bufsize+1);
-        g_sprintf(data->image_path, WORLD_IMG_BASE_PATH);
+		/* Allocate and set image_path */
+		bufsize += strlen(WORLD_IMG_BASE_PATH);
+		data->image_path = g_new0(gchar, bufsize+1);
+		g_sprintf(data->image_path, WORLD_IMG_BASE_PATH);
 
-        g_strfreev(tokens);
-        return data;
-    }
+		g_strfreev(tokens);
+		return data;
+	}
 
 	/* badge, environment, or avatar */
 	if (length < 3) {
@@ -392,18 +415,126 @@ static notification_info_t *get_notification_by_id(gchar *id)
 		g_sprintf(data->image_path, AWARD_IMG_BASE_PATH, tokens[0], tokens[1], tokens[2]);
 	}
 
+	/* Allocate and set the sound */
+	bufsize = strlen(CHEER_SOUND);
+	data->sound = g_new0(gchar, bufsize+1);
+	g_strlcpy(data->sound, CHEER_SOUND, bufsize+1);
+
 	g_strfreev(tokens);
 	return data;
 }
 
-static gboolean hide_notification_window(GtkWidget *w, GdkEventButton *event,
-				  kano_notifications_t *plugin_data)
+static notification_info_t *get_json_notification(gchar *json_data)
+{
+	JSON_Value *root_value = NULL;
+	JSON_Object *root = NULL;
+	const char *title = NULL;
+	const char *byline = NULL;
+	const char *image_path = NULL;
+	const char *command = NULL;
+	const char *sound = NULL;
+
+	root_value = json_parse_string(json_data);
+	if (json_value_get_type(root_value) != JSONObject) {
+		json_value_free(root_value);
+		return NULL;
+	}
+
+	root = json_value_get_object(root_value);
+
+	title = json_object_get_string(root, "title");
+	if (!title) {
+		json_value_free(root_value);
+		return NULL;
+	}
+
+	byline = json_object_get_string(root, "byline");
+	if (!byline) {
+		json_value_free(root_value);
+		return NULL;
+	}
+
+	image_path = json_object_get_string(root, "image");
+	command = json_object_get_string(root, "command");
+	sound = json_object_get_string(root, "sound");
+
+	notification_info_t *data = g_new0(notification_info_t, 1);
+
+	data->title = g_new0(gchar, strlen(title) + 1);
+	g_strlcpy(data->title, title, strlen(title) + 1);
+
+	data->byline = g_new0(gchar, strlen(byline) + 1);
+	g_strlcpy(data->byline, byline, strlen(byline) + 1);
+
+	if (image_path) {
+		data->image_path = g_new0(gchar, strlen(image_path) + 1);
+		g_strlcpy(data->image_path, image_path, strlen(image_path) + 1);
+	}
+
+	if (command) {
+		data->command = g_new0(gchar, strlen(command) + 1);
+		g_strlcpy(data->command, command, strlen(command) + 1);
+	}
+
+	if (sound) {
+		data->sound = g_new0(gchar, strlen(sound) + 1);
+		g_strlcpy(data->sound, sound, strlen(sound) + 1);
+	}
+
+	json_value_free(root_value);
+
+	return data;
+}
+
+static void hide_notification_window(kano_notifications_t *plugin_data)
 {
 	if (g_mutex_trylock(&(plugin_data->lock)) == TRUE) {
 		g_source_remove(plugin_data->window_timeout);
 		g_mutex_unlock(&(plugin_data->lock));
 		close_notification(plugin_data);
 	}
+}
+
+static gboolean eventbox_click_cb(GtkWidget *w, GdkEventButton *event,
+				  kano_notifications_t *plugin_data)
+{
+	hide_notification_window(plugin_data);
+	return TRUE;
+}
+
+static gboolean button_realize_cb(GtkWidget *widget, void *data)
+{
+	GdkCursor *cursor;
+	cursor = gdk_cursor_new(GDK_HAND1);
+	gdk_window_set_cursor(widget->window, cursor);
+	gdk_flush();
+	gdk_cursor_destroy(cursor);
+
+	return TRUE;
+}
+
+static gboolean button_enter_cb(GtkWidget *widget, GdkEvent *event, void *data)
+{
+	GdkColor button_bg;
+	gdk_color_parse("#dddddd", &button_bg);
+	gtk_widget_modify_bg(widget, GTK_STATE_NORMAL, &button_bg);
+	return TRUE;
+}
+
+static gboolean button_leave_cb(GtkWidget *widget, GdkEvent *event, void *data)
+{
+	GdkColor button_bg;
+	gdk_color_parse("#f1f1f1", &button_bg);
+	gtk_widget_modify_bg(widget, GTK_STATE_NORMAL, &button_bg);
+	return TRUE;
+}
+
+static gboolean button_click_cb(GtkWidget *w, GdkEventButton *event,
+				gtk_user_data_t *user_data)
+{
+	launch_cmd(user_data->notification->command);
+	hide_notification_window(user_data->plugin_data);
+	g_free(user_data);
 
 	return TRUE;
 }
@@ -413,33 +544,46 @@ static void show_notification_window(kano_notifications_t *plugin_data,
 {
 	GtkWidget *win = gtk_window_new(GTK_WINDOW_POPUP);
 	plugin_data->window = win;
-	gtk_window_set_default_size(GTK_WINDOW(win), WINDOW_WIDTH, WINDOW_HEIGHT);
+
+	int win_width, win_height;
+	if (notification->image_path)
+	{
+		win_width = NOTIFICATION_IMAGE_WIDTH;
+		win_height = NOTIFICATION_IMAGE_HEIGHT + PANEL_HEIGHT;
+	} else {
+		win_width = PANEL_WIDTH;
+		win_height = PANEL_HEIGHT;
+	}
+
+	gtk_window_set_default_size(GTK_WINDOW(win), win_width, win_height);
 	gtk_window_set_position(GTK_WINDOW(win), GTK_WIN_POS_CENTER);
 
 	/* TODO Positioning doesn't take into account the position of the
 	   panel itself. */
 	gtk_window_set_gravity(GTK_WINDOW(win), GDK_GRAVITY_SOUTH_EAST);
 	gtk_window_move(GTK_WINDOW(win),
-		gdk_screen_width() - WINDOW_WIDTH - WINDOW_MARGIN_RIGHT,
-		gdk_screen_height() - WINDOW_HEIGHT - panel->height
+		gdk_screen_width() - win_width - WINDOW_MARGIN_RIGHT,
+		gdk_screen_height() - win_height - panel->height
 		- WINDOW_MARGIN_BOTTOM);
 
 	GtkStyle *style;
-	GdkColor white;
-	gdk_color_parse("white", &white);
-	gtk_widget_modify_bg(win, GTK_STATE_NORMAL, &white);
-
-	GtkWidget *image = gtk_image_new_from_file(notification->image_path);
-	gtk_widget_add_events(image, GDK_BUTTON_RELEASE_MASK);
-
 	GtkWidget *eventbox = gtk_event_box_new();
 	gtk_signal_connect(GTK_OBJECT(eventbox), "button-release-event",
-                     GTK_SIGNAL_FUNC(hide_notification_window), plugin_data);
+                     GTK_SIGNAL_FUNC(eventbox_click_cb), plugin_data);
+
+	GdkColor white;
+	gdk_color_parse("white", &white);
+	gtk_widget_modify_bg(eventbox, GTK_STATE_NORMAL, &white);
 
 	GtkWidget *box = gtk_vbox_new(FALSE, 0);
 	gtk_container_add(GTK_CONTAINER(eventbox), GTK_WIDGET(box));
-	gtk_box_pack_start(GTK_BOX(box), GTK_WIDGET(image),
-			   FALSE, FALSE, 0);
+
+	if (notification->image_path) {
+		GtkWidget *image = gtk_image_new_from_file(notification->image_path);
+		gtk_widget_add_events(image, GDK_BUTTON_RELEASE_MASK);
+		gtk_box_pack_start(GTK_BOX(box), GTK_WIDGET(image),
+				   FALSE, FALSE, 0);
+	}
 
 	gtk_container_add(GTK_CONTAINER(win), GTK_WIDGET(eventbox));
 
@@ -471,11 +615,50 @@ static void show_notification_window(kano_notifications_t *plugin_data,
 	gtk_box_pack_start(GTK_BOX(labels), GTK_WIDGET(byline_align),
 			   FALSE, FALSE, 0);
 
-	gtk_box_pack_start(GTK_BOX(box), GTK_WIDGET(labels),
+	GtkWidget *hbox = gtk_hbox_new(FALSE, 0);
+
+	gtk_box_pack_start(GTK_BOX(hbox), GTK_WIDGET(labels),
 			   TRUE, TRUE, 0);
 
+	/* Add the command button if there is a command */
+	if (notification->command && strlen(notification->command) > 0) {
+		GdkColor button_bg;
+		gdk_color_parse("#f1f1f1", &button_bg);
+		GtkWidget *arrow = gtk_image_new_from_file(RIGHT_ARROW);
+		GtkWidget *button = gtk_event_box_new();
+		gtk_widget_modify_bg(button, GTK_STATE_NORMAL, &button_bg);
+		gtk_container_add(GTK_CONTAINER(button), arrow);
+		gtk_widget_set_size_request(button, 44, 90);
+		gtk_signal_connect(GTK_OBJECT(button), "realize",
+			     GTK_SIGNAL_FUNC(button_realize_cb), NULL);
+		gtk_signal_connect(GTK_OBJECT(button), "enter-notify-event",
+			     GTK_SIGNAL_FUNC(button_enter_cb), NULL);
+		gtk_signal_connect(GTK_OBJECT(button), "leave-notify-event",
+			     GTK_SIGNAL_FUNC(button_leave_cb), NULL);
+
+		gtk_user_data_t *user_data = g_new0(gtk_user_data_t, 1);
+		user_data->notification = notification;
+		user_data->plugin_data = plugin_data;
+		gtk_signal_connect(GTK_OBJECT(button), "button-release-event",
+			     GTK_SIGNAL_FUNC(button_click_cb), user_data);
+
+		gtk_box_pack_start(GTK_BOX(hbox), GTK_WIDGET(button),
+				   FALSE, FALSE, 0);
+	}
+
+	gtk_box_pack_start(GTK_BOX(box), GTK_WIDGET(hbox),
+			   TRUE, TRUE, 0);
 
 	gtk_widget_show_all(win);
+
+	/* Play the sound */
+	if (notification->sound) {
+		int bufsize = strlen("aplay") + strlen(notification->sound) + 2;
+		gchar *aplay_cmd = g_new0(gchar, bufsize);
+		g_sprintf(aplay_cmd, "aplay %s", notification->sound);
+		launch_cmd(aplay_cmd);
+		g_free(aplay_cmd);
+	}
 
 	plugin_data->window_timeout = g_timeout_add(6000,
 				(GSourceFunc) close_notification,
@@ -541,16 +724,42 @@ static gboolean io_watch_cb(GIOChannel *source, GIOCondition cond, gpointer data
 			return TRUE;
 		}
 
-		notification_info_t *data = get_notification_by_id(line);
+		if (g_strcmp0(line, "pause") == 0) {
+			g_mutex_lock(&(plugin_data->lock));
+			plugin_data->paused = TRUE;
+			g_mutex_unlock(&(plugin_data->lock));
+			g_free(line);
+			return TRUE;
+		}
+
+		if (g_strcmp0(line, "resume") == 0) {
+			g_mutex_lock(&(plugin_data->lock));
+			plugin_data->paused = FALSE;
+
+			if (g_list_length(plugin_data->queue) > 0) {
+				notification_info_t *first = g_list_nth_data(plugin_data->queue, 0);
+				show_notification_window(plugin_data, first);
+			}
+
+			g_mutex_unlock(&(plugin_data->lock));
+			g_free(line);
+			return TRUE;
+		}
+
+		/* See if the notification is a JSON */
+		notification_info_t *data = get_json_notification(line);
+
+		if (!data)
+			data = get_notification_by_id(line);
+
 		if (data) {
 			g_mutex_lock(&(plugin_data->lock));
 
 			plugin_data->queue = g_list_append(plugin_data->queue, data);
 
-			if (g_list_length(plugin_data->queue) <= 1) {
+			if (g_list_length(plugin_data->queue) <= 1 &&
+			    !plugin_data->paused)
 				show_notification_window(plugin_data, data);
-				launch_cmd("aplay /usr/share/kano-media/sounds/kano_level_up.wav");
-			}
 
 			g_mutex_unlock(&(plugin_data->lock));
 		}
