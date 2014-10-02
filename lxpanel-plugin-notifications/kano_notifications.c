@@ -26,6 +26,8 @@
 #include <fcntl.h>
 #include <pwd.h>
 
+#include <kdesk-hourglass.h>
+
 #include "parson.h"
 
 #define FIFO_FILENAME ".kano-notifications.fifo"
@@ -110,7 +112,7 @@ static gboolean close_notification(kano_notifications_t *plugin_data);
 
 static int plugin_constructor(Plugin *plugin, char **fp);
 static void plugin_destructor(Plugin *p);
-static void launch_cmd(const char *cmd);
+static void launch_cmd(const char *cmd, gboolean hourglass);
 
 gchar *get_fifo_filename(void);
 
@@ -532,7 +534,7 @@ static gboolean button_leave_cb(GtkWidget *widget, GdkEvent *event, void *data)
 static gboolean button_click_cb(GtkWidget *w, GdkEventButton *event,
 				gtk_user_data_t *user_data)
 {
-	launch_cmd(user_data->notification->command);
+	launch_cmd(user_data->notification->command, TRUE);
 	hide_notification_window(user_data->plugin_data);
 	g_free(user_data);
 
@@ -656,7 +658,7 @@ static void show_notification_window(kano_notifications_t *plugin_data,
 		int bufsize = strlen("aplay") + strlen(notification->sound) + 2;
 		gchar *aplay_cmd = g_new0(gchar, bufsize);
 		g_sprintf(aplay_cmd, "aplay %s", notification->sound);
-		launch_cmd(aplay_cmd);
+		launch_cmd(aplay_cmd, FALSE);
 		g_free(aplay_cmd);
 	}
 
@@ -689,7 +691,7 @@ static gboolean close_notification(kano_notifications_t *plugin_data)
 	return FALSE;
 }
 
-static void launch_cmd(const char *cmd)
+static void launch_cmd(const char *cmd, gboolean hourglass)
 {
 	GAppInfo *appinfo = NULL;
 	gboolean ret = FALSE;
@@ -697,14 +699,22 @@ static void launch_cmd(const char *cmd)
 	appinfo = g_app_info_create_from_commandline(cmd, NULL,
 				G_APP_INFO_CREATE_NONE, NULL);
 
+	if (hourglass)
+		kdesk_hourglass_start_appcmd((char *) cmd);
+
 	if (appinfo == NULL) {
 		perror("Command lanuch failed.");
+		if (hourglass)
+			kdesk_hourglass_end();
 		return;
 	}
 
 	ret = g_app_info_launch(appinfo, NULL, NULL, NULL);
-	if (!ret)
+	if (!ret) {
 		perror("Command lanuch failed.");
+		if (hourglass)
+			kdesk_hourglass_end();
+	}
 }
 
 static gboolean io_watch_cb(GIOChannel *source, GIOCondition cond, gpointer data)
