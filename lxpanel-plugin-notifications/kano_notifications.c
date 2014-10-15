@@ -37,6 +37,11 @@
 
 #define CHEER_SOUND "/usr/share/kano-media/sounds/kano_level_up.wav"
 
+#define BUTTON_HIGHLIGHTED_COLOUR "#d4d4d4"
+#define BUTTON_COLOUR "#e4e4e4"
+#define BUTTON_WIDTH 44
+#define BUTTON_HEIGHT 90
+
 #define NOTIFICATION_IMAGE_WIDTH 280
 #define NOTIFICATION_IMAGE_HEIGHT 170
 
@@ -45,6 +50,9 @@
 
 #define WINDOW_MARGIN_RIGHT 20
 #define WINDOW_MARGIN_BOTTOM 20
+
+#define LABELS_WIDTH (NOTIFICATION_IMAGE_WIDTH - WINDOW_MARGIN_RIGHT*2 - \
+		      BUTTON_WIDTH)
 
 #define __STR_HELPER(x) #x
 #define STR(x) __STR_HELPER(x)
@@ -71,6 +79,8 @@
 
 #define RULES_BASE_PATH "/usr/share/kano-profile/rules/%s/%s.json"
 
+#define TITLE_COLOUR "#323232"
+#define BYLINE_COLOUR "#6e6e6e"
 
 Panel *panel;
 
@@ -518,7 +528,7 @@ static gboolean button_realize_cb(GtkWidget *widget, void *data)
 static gboolean button_enter_cb(GtkWidget *widget, GdkEvent *event, void *data)
 {
 	GdkColor button_bg;
-	gdk_color_parse("#dddddd", &button_bg);
+	gdk_color_parse(BUTTON_HIGHLIGHTED_COLOUR, &button_bg);
 	gtk_widget_modify_bg(widget, GTK_STATE_NORMAL, &button_bg);
 	return TRUE;
 }
@@ -526,7 +536,7 @@ static gboolean button_enter_cb(GtkWidget *widget, GdkEvent *event, void *data)
 static gboolean button_leave_cb(GtkWidget *widget, GdkEvent *event, void *data)
 {
 	GdkColor button_bg;
-	gdk_color_parse("#f1f1f1", &button_bg);
+	gdk_color_parse(BUTTON_COLOUR, &button_bg);
 	gtk_widget_modify_bg(widget, GTK_STATE_NORMAL, &button_bg);
 	return TRUE;
 }
@@ -591,12 +601,21 @@ static void show_notification_window(kano_notifications_t *plugin_data,
 
 	GtkWidget *labels = gtk_vbox_new(FALSE, 0);
 
-	GtkWidget *title = gtk_label_new(notification->title);
+	GtkWidget *title = gtk_label_new(NULL);
+	gtk_widget_set_size_request(title, LABELS_WIDTH, -1);
+	gtk_label_set_text(GTK_LABEL(title), notification->title);
 	gtk_label_set_justify(GTK_LABEL(title), GTK_JUSTIFY_LEFT);
+	gtk_label_set_line_wrap(GTK_LABEL(title), TRUE);
+	gtk_label_set_line_wrap_mode(GTK_LABEL(title), PANGO_WRAP_WORD);
+
 	style = gtk_widget_get_style(title);
 	pango_font_description_set_size(style->font_desc, 18*PANGO_SCALE);
 	pango_font_description_set_weight(style->font_desc, PANGO_WEIGHT_BOLD);
 	gtk_widget_modify_font(title, style->font_desc);
+
+	GdkColor title_colour;
+	gdk_color_parse(TITLE_COLOUR, &title_colour);
+	gtk_widget_modify_fg(title, GTK_STATE_NORMAL, &title_colour);
 
 	GtkWidget *title_align = gtk_alignment_new(0,0,0,0);
 	gtk_alignment_set_padding(GTK_ALIGNMENT(title_align), 20, 0, 20, 0);
@@ -604,15 +623,24 @@ static void show_notification_window(kano_notifications_t *plugin_data,
 	gtk_box_pack_start(GTK_BOX(labels), GTK_WIDGET(title_align),
 			   FALSE, FALSE, 0);
 
-	GtkWidget *byline = gtk_label_new(notification->byline);
+	GtkWidget *byline = gtk_label_new(NULL);
+	gtk_label_set_text(GTK_LABEL(byline), notification->byline);
+	gtk_widget_set_size_request(byline, LABELS_WIDTH, -1);
 	gtk_label_set_justify(GTK_LABEL(byline), GTK_JUSTIFY_LEFT);
+	gtk_label_set_line_wrap(GTK_LABEL(byline), TRUE);
+	gtk_label_set_line_wrap_mode(GTK_LABEL(byline), PANGO_WRAP_WORD);
+
 	style = gtk_widget_get_style(byline);
 	pango_font_description_set_size(style->font_desc, 12*PANGO_SCALE);
 	pango_font_description_set_weight(style->font_desc, PANGO_WEIGHT_NORMAL);
 	gtk_widget_modify_font(byline, style->font_desc);
 
+	GdkColor byline_colour;
+	gdk_color_parse(BYLINE_COLOUR, &byline_colour);
+	gtk_widget_modify_fg(byline, GTK_STATE_NORMAL, &byline_colour);
+
 	GtkWidget *byline_align = gtk_alignment_new(0,0,0,0);
-	gtk_alignment_set_padding(GTK_ALIGNMENT(byline_align), 0, 0, 20, 0);
+	gtk_alignment_set_padding(GTK_ALIGNMENT(byline_align), 5, 20, 20, 0);
 	gtk_container_add(GTK_CONTAINER(byline_align), byline);
 	gtk_box_pack_start(GTK_BOX(labels), GTK_WIDGET(byline_align),
 			   FALSE, FALSE, 0);
@@ -625,12 +653,12 @@ static void show_notification_window(kano_notifications_t *plugin_data,
 	/* Add the command button if there is a command */
 	if (notification->command && strlen(notification->command) > 0) {
 		GdkColor button_bg;
-		gdk_color_parse("#f1f1f1", &button_bg);
+		gdk_color_parse(BUTTON_COLOUR, &button_bg);
 		GtkWidget *arrow = gtk_image_new_from_file(RIGHT_ARROW);
 		GtkWidget *button = gtk_event_box_new();
 		gtk_widget_modify_bg(button, GTK_STATE_NORMAL, &button_bg);
 		gtk_container_add(GTK_CONTAINER(button), arrow);
-		gtk_widget_set_size_request(button, 44, 90);
+		gtk_widget_set_size_request(button, BUTTON_WIDTH, BUTTON_HEIGHT);
 		gtk_signal_connect(GTK_OBJECT(button), "realize",
 			     GTK_SIGNAL_FUNC(button_realize_cb), NULL);
 		gtk_signal_connect(GTK_OBJECT(button), "enter-notify-event",
