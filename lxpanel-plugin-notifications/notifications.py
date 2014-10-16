@@ -10,7 +10,7 @@ import json
 from kano.logging import logger
 
 
-NOTIFICATION_PIPE = os.path.join(os.path.expanduser('~'),
+_NOTIFICATION_PIPE = os.path.join(os.path.expanduser('~'),
                                  '.kano-notifications.fifo')
 
 _CONF_PATH = os.path.join(os.path.expanduser('~'),
@@ -139,12 +139,12 @@ def _send_to_widget(message):
 
     :param notification: the message string
     """
-    if not os.path.isfile(NOTIFICATION_PIPE):
-        msg = "The notification pipe not found at {}".format(NOTIFICATION_PIPE)
+    if not os.path.isfile(_NOTIFICATION_PIPE):
+        msg = "The notification pipe not found at {}".format(_NOTIFICATION_PIPE)
         logger.warn(msg)
         return
 
-    with open(NOTIFICATION_PIPE, 'w') as fifo:
+    with open(_NOTIFICATION_PIPE, 'w') as fifo:
         msg = 'Sending "{}" to the notifications widget'.format(message)
         logger.debug(msg)
         fifo.write(message + '\n')
