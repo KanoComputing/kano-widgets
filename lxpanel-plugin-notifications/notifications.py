@@ -50,7 +50,7 @@ def is_enabled():
     return False
 
 
-def allow_world_nottifications():
+def allow_world_notifications():
     """ Turns off the filtering of notifications from kano world. """
 
     _send_to_widget("allow_world_notifications")
