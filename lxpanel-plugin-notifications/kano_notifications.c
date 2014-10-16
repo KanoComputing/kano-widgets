@@ -31,6 +31,8 @@
 #include "parson.h"
 
 #define FIFO_FILENAME ".kano-notifications.fifo"
+#define CONF_FILENAME ".kano-notifications.conf"
+
 #define ON_ICON_FILE "/usr/share/kano-widgets/icons/notifications-on.png"
 #define OFF_ICON_FILE "/usr/share/kano-widgets/icons/notifications-off.png"
 #define RIGHT_ARROW "/usr/share/kano-widgets/icons/arrow-right.png"
@@ -84,13 +86,17 @@
 
 Panel *panel;
 
-typedef struct {
+struct notification_conf {
 	gboolean enabled;
-	gboolean paused;
+	gboolean allow_world_notifications;
+};
 
+typedef struct {
 	int fifo_fd;
 	GIOChannel *fifo_channel;
 	guint watch_id;
+
+	gboolean paused;
 
 	GtkWidget *icon;
 
@@ -99,6 +105,8 @@ typedef struct {
 
 	GtkWidget *window;
 	guint window_timeout;
+
+	struct notification_conf conf;
 } kano_notifications_t;
 
 typedef struct {
@@ -125,6 +133,7 @@ static void plugin_destructor(Plugin *p);
 static void launch_cmd(const char *cmd, gboolean hourglass);
 
 gchar *get_fifo_filename(void);
+gchar *get_conf_filename(void);
 
 
 gchar *get_fifo_filename(void)
@@ -146,6 +155,88 @@ gchar *get_fifo_filename(void)
     }
 }
 
+
+gchar *get_conf_filename(void)
+{
+    struct passwd *pw = getpwuid(getuid());
+    const char *homedir = pw->pw_dir;
+
+    // You are responsible for freeing the returned char buffer
+    int buff_len=strlen(homedir) + strlen(FIFO_FILENAME) + sizeof(char) * 2;
+    gchar *fifo_filename = g_new0(gchar, buff_len);
+    if (!fifo_filename) {
+        return NULL;
+    }
+    else {
+        g_strlcpy(fifo_filename, homedir, buff_len);
+        g_strlcat(fifo_filename, "/", buff_len);
+        g_strlcat(fifo_filename, CONF_FILENAME, buff_len);
+        return (fifo_filename);
+    }
+}
+
+
+int save_conf(struct notification_conf *conf)
+{
+	int status;
+
+	gchar *conf_file = get_conf_filename();
+	if (conf_file == NULL)
+		return -1;
+
+	JSON_Value *root_value = json_value_init_object();
+	JSON_Object *root_object = json_value_get_object(root_value);
+
+	json_object_set_boolean(root_object, "enabled", conf->enabled);
+	json_object_set_boolean(root_object, "allow_world_notifications",
+				conf->allow_world_notifications);
+
+	status = json_serialize_to_file(root_value, conf_file);
+
+	/* Free the conf file path before we return */
+	g_free(conf_file);
+	json_value_free(root_value);
+
+	return status;
+}
+
+
+void load_conf(struct notification_conf *conf)
+{
+	gchar *conf_file = get_conf_filename();
+
+	if (conf_file != NULL && access(conf_file, F_OK) != -1) {
+		JSON_Value *root_value = NULL;
+		JSON_Object *root = NULL;
+
+		root_value = json_parse_file(conf_file);
+
+		/* Free the conf file path before we return */
+		g_free(conf_file);
+
+		if (json_value_get_type(root_value) == JSONObject) {
+			root = json_value_get_object(root_value);
+
+			conf->enabled = json_object_get_boolean(root, "enabled");
+			conf->allow_world_notifications = json_object_get_boolean(root,
+							"allow_world_notifications");
+
+			json_value_free(root_value);
+			return;
+		}
+
+		json_value_free(root_value);
+	}
+
+	/* There's no or malformed configuration, so create a default one. */
+	conf->enabled = TRUE;
+	conf->allow_world_notifications = TRUE;
+	save_conf(conf);
+
+	return;
+}
+
+
 static int plugin_constructor(Plugin *plugin, char **fp)
 {
 	(void)fp;
@@ -158,7 +249,6 @@ static int plugin_constructor(Plugin *plugin, char **fp)
 	plugin_data->window = NULL;
 	plugin_data->queue = NULL;
 
-	plugin_data->enabled = TRUE; // TODO load from the configuration
 	plugin_data->paused = FALSE; // TODO load from the configuration
 
 	g_mutex_init(&(plugin_data->lock));
@@ -188,14 +278,17 @@ static int plugin_constructor(Plugin *plugin, char **fp)
 
             plugin_data->fifo_channel = g_io_channel_unix_new(plugin_data->fifo_fd);
             plugin_data->watch_id = g_io_add_watch(plugin_data->fifo_channel,
-                                                   G_IO_IN, (GIOFunc)io_watch_cb, (gpointer)plugin_data);
+                                                   G_IO_IN, (GIOFunc)io_watch_cb,
+						   (gpointer)plugin_data);
             g_free(pipe_filename);
         }
+
+	load_conf(&(plugin_data->conf));
 
 	/* put it where it belongs */
 	plugin->priv = plugin_data;
 
-	GtkWidget *icon = gtk_image_new_from_file(plugin_data->enabled ?
+	GtkWidget *icon = gtk_image_new_from_file(plugin_data->conf.enabled ?
 					ON_ICON_FILE : OFF_ICON_FILE);
 	plugin_data->icon = icon;
 
@@ -757,7 +850,7 @@ static gboolean io_watch_cb(GIOChannel *source, GIOCondition cond, gpointer data
 	if (status == G_IO_STATUS_NORMAL) {
 		line[tpos] = '\0';
 
-		if (!plugin_data->enabled) {
+		if (!plugin_data->conf.enabled) {
 			g_free(line);
 			return TRUE;
 		}
@@ -815,10 +908,11 @@ static gboolean plugin_clicked(GtkWidget *widget, GdkEventButton *event,
 	if (event->button != 1)
 		return FALSE;
 
-	plugin_data->enabled = !(plugin_data->enabled);
+	plugin_data->conf.enabled = !(plugin_data->conf.enabled);
+	save_conf(&(plugin_data->conf));
 
 	gtk_image_set_from_file(GTK_IMAGE(plugin_data->icon),
-		plugin_data->enabled ? ON_ICON_FILE : OFF_ICON_FILE);
+		plugin_data->conf.enabled ? ON_ICON_FILE : OFF_ICON_FILE);
 
 	return TRUE;
 }
