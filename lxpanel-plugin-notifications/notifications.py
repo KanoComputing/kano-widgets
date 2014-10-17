@@ -8,13 +8,14 @@
 import os
 import json
 from kano.logging import logger
+from kano.utils import get_user_unsudoed, get_home_by_username
 
 
-_NOTIFICATION_PIPE = os.path.join(os.path.expanduser('~'),
-                                 '.kano-notifications.fifo')
+_NOTIFICATION_PIPE = os.path.join(get_home_by_username(get_user_unsudoed()),
+                                  '.kano-notifications.fifo')
 
-_CONF_PATH = os.path.join(os.path.expanduser('~'),
-                         '.kano-notifications.conf')
+_CONF_PATH = os.path.join(get_home_by_username(get_user_unsudoed()),
+                          '.kano-notifications.conf')
 
 
 def enable():
