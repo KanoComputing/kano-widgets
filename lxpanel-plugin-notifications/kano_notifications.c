@@ -161,16 +161,16 @@ gchar *get_conf_filename(void)
     const char *homedir = pw->pw_dir;
 
     // You are responsible for freeing the returned char buffer
-    int buff_len=strlen(homedir) + strlen(FIFO_FILENAME) + sizeof(char) * 2;
-    gchar *fifo_filename = g_new0(gchar, buff_len);
-    if (!fifo_filename) {
+    int buff_len=strlen(homedir) + strlen(CONF_FILENAME) + sizeof(char) * 2;
+    gchar *conf_filename = g_new0(gchar, buff_len);
+    if (!conf_filename) {
         return NULL;
     }
     else {
-        g_strlcpy(fifo_filename, homedir, buff_len);
-        g_strlcat(fifo_filename, "/", buff_len);
-        g_strlcat(fifo_filename, CONF_FILENAME, buff_len);
-        return (fifo_filename);
+        g_strlcpy(conf_filename, homedir, buff_len);
+        g_strlcat(conf_filename, "/", buff_len);
+        g_strlcat(conf_filename, CONF_FILENAME, buff_len);
+        return (conf_filename);
     }
 }
 
