@@ -139,7 +139,8 @@ def _send_to_widget(message):
 
     :param notification: the message string
     """
-    if not os.path.isfile(_NOTIFICATION_PIPE):
+
+    if not os.path.exists(_NOTIFICATION_PIPE):
         msg = "The notification pipe not found at {}".format(_NOTIFICATION_PIPE)
         logger.warn(msg)
         return
