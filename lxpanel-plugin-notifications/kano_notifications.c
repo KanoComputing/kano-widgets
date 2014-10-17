@@ -115,6 +115,7 @@ typedef struct {
 	gchar *byline;
 	gchar *command;
 	gchar *sound;
+	gchar *type;
 } notification_info_t;
 
 /* This struct is used exclusively for passing user data to GTK signals. */
@@ -323,6 +324,7 @@ static void free_notification(notification_info_t *data)
 	g_free(data->byline);
 	g_free(data->command);
 	g_free(data->sound);
+	g_free(data->type);
 	g_free(data);
 }
 
@@ -514,6 +516,7 @@ static notification_info_t *get_json_notification(gchar *json_data)
 	const char *image_path = NULL;
 	const char *command = NULL;
 	const char *sound = NULL;
+	const char *type = NULL;
 
 	root_value = json_parse_string(json_data);
 	if (json_value_get_type(root_value) != JSONObject) {
@@ -538,6 +541,7 @@ static notification_info_t *get_json_notification(gchar *json_data)
 	image_path = json_object_get_string(root, "image");
 	command = json_object_get_string(root, "command");
 	sound = json_object_get_string(root, "sound");
+	type = json_object_get_string(root, "type");
 
 	notification_info_t *data = g_new0(notification_info_t, 1);
 
@@ -560,6 +564,11 @@ static notification_info_t *get_json_notification(gchar *json_data)
 	if (sound) {
 		data->sound = g_new0(gchar, strlen(sound) + 1);
 		g_strlcpy(data->sound, sound, strlen(sound) + 1);
+	}
+
+	if (type) {
+		data->type = g_new0(gchar, strlen(type) + 1);
+		g_strlcpy(data->type, type, strlen(type) + 1);
 	}
 
 	json_value_free(root_value);
@@ -826,7 +835,44 @@ static gboolean io_watch_cb(GIOChannel *source, GIOCondition cond, gpointer data
 	if (status == G_IO_STATUS_NORMAL) {
 		line[tpos] = '\0';
 
+		/* This has to come before the enabled check. */
+		if (g_strcmp0(line, "enable") == 0) {
+			g_mutex_lock(&(plugin_data->lock));
+			plugin_data->conf.enabled = TRUE;
+			g_mutex_unlock(&(plugin_data->lock));
+			save_conf(&(plugin_data->conf));
+			g_free(line);
+			return TRUE;
+		}
+
 		if (!plugin_data->conf.enabled) {
+			g_free(line);
+			return TRUE;
+		}
+
+		if (g_strcmp0(line, "disable") == 0) {
+			g_mutex_lock(&(plugin_data->lock));
+			plugin_data->conf.enabled = FALSE;
+			g_mutex_unlock(&(plugin_data->lock));
+			save_conf(&(plugin_data->conf));
+			g_free(line);
+			return TRUE;
+		}
+
+		if (g_strcmp0(line, "allow_world_notifications") == 0) {
+			g_mutex_lock(&(plugin_data->lock));
+			plugin_data->conf.allow_world_notifications = TRUE;
+			g_mutex_unlock(&(plugin_data->lock));
+			save_conf(&(plugin_data->conf));
+			g_free(line);
+			return TRUE;
+		}
+
+		if (g_strcmp0(line, "disallow_world_notifications") == 0) {
+			g_mutex_lock(&(plugin_data->lock));
+			plugin_data->conf.allow_world_notifications = FALSE;
+			g_mutex_unlock(&(plugin_data->lock));
+			save_conf(&(plugin_data->conf));
 			g_free(line);
 			return TRUE;
 		}
@@ -859,8 +905,18 @@ static gboolean io_watch_cb(GIOChannel *source, GIOCondition cond, gpointer data
 		if (!data)
 			data = get_notification_by_id(line);
 
+		g_free(line);
+
 		if (data) {
 			g_mutex_lock(&(plugin_data->lock));
+
+			/* Don't queue world notifications in case they are
+			   being filtered. */
+			if (data->type && g_strcmp0(data->type, "world") == 0 &&
+			    !plugin_data->conf.allow_world_notifications) {
+				g_mutex_unlock(&(plugin_data->lock));
+				return TRUE;
+			}
 
 			plugin_data->queue = g_list_append(plugin_data->queue, data);
 
@@ -871,7 +927,6 @@ static gboolean io_watch_cb(GIOChannel *source, GIOCondition cond, gpointer data
 			g_mutex_unlock(&(plugin_data->lock));
 		}
 
-		g_free(line);
 	}
 
 	return TRUE;

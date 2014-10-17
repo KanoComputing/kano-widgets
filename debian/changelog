@@ -1,3 +1,11 @@
+kano-widgets (1.2.4-3) unstable; urgency=low
+
+  * Implemented enable/disable for the notification widget
+  * Implemented allow/disallow world for the notification widget
+  * Removing the widget icon from the bottom bar
+
+ -- Team Kano <dev@kano.me>  Fri, 17 Oct 2014 16:22:00 +0100
+
 kano-widgets (1.2.4-2) unstable; urgency=low
 
   * Adding the notifications Python API
