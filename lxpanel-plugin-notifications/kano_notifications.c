@@ -123,8 +123,6 @@ typedef struct {
 	kano_notifications_t *plugin_data;
 } gtk_user_data_t;
 
-static gboolean plugin_clicked(GtkWidget *, GdkEventButton *,
-			       kano_notifications_t *);
 static gboolean io_watch_cb(GIOChannel *source, GIOCondition cond, gpointer data);
 static gboolean close_notification(kano_notifications_t *plugin_data);
 
@@ -288,30 +286,8 @@ static int plugin_constructor(Plugin *plugin, char **fp)
 	/* put it where it belongs */
 	plugin->priv = plugin_data;
 
-	GtkWidget *icon = gtk_image_new_from_file(plugin_data->conf.enabled ?
-					ON_ICON_FILE : OFF_ICON_FILE);
-	plugin_data->icon = icon;
-
-	gtk_widget_set_sensitive(icon, TRUE);
-
-	/* Set a tooltip to the icon to show when the mouse sits over it */
-	GtkTooltips *tooltips;
-	tooltips = gtk_tooltips_new();
-	gtk_tooltips_set_tip(tooltips, GTK_WIDGET(icon),
-			     "Notification Centre", NULL);
-
-	plugin->pwid = gtk_event_box_new();
-	gtk_container_set_border_width(GTK_CONTAINER(plugin->pwid), 0);
-	gtk_container_add(GTK_CONTAINER(plugin->pwid), GTK_WIDGET(icon));
-
-	gtk_signal_connect(GTK_OBJECT(plugin->pwid), "button-press-event",
-			   GTK_SIGNAL_FUNC(plugin_clicked), plugin_data);
-
-	/* our widget doesn't have a window... */
-	gtk_widget_set_has_window(plugin->pwid, FALSE);
-
-	/* show our widget */
-	gtk_widget_show_all(plugin->pwid);
+	/* This widget doesn't have any visual representation */
+	plugin->pwid = NULL;
 
 	return 1;
 }
@@ -897,22 +873,6 @@ static gboolean io_watch_cb(GIOChannel *source, GIOCondition cond, gpointer data
 
 		g_free(line);
 	}
-
-	return TRUE;
-}
-
-static gboolean plugin_clicked(GtkWidget *widget, GdkEventButton *event,
-		      kano_notifications_t *plugin_data)
-{
-	// TODO TOGGLE NOTIFICATIONS!
-	if (event->button != 1)
-		return FALSE;
-
-	plugin_data->conf.enabled = !(plugin_data->conf.enabled);
-	save_conf(&(plugin_data->conf));
-
-	gtk_image_set_from_file(GTK_IMAGE(plugin_data->icon),
-		plugin_data->conf.enabled ? ON_ICON_FILE : OFF_ICON_FILE);
 
 	return TRUE;
 }
