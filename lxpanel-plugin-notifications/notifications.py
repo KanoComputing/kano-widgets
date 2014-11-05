@@ -22,6 +22,8 @@ def enable():
     """ Turns the notifications on
 
     Nothing will happen if they're on already.
+    If there were queued notifications while it was in 'disable' mode,
+    they will be displayed now in sequence.
     """
 
     _send_to_widget("enable")
