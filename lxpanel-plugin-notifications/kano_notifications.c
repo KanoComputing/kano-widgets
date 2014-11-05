@@ -622,11 +622,29 @@ static gboolean button_leave_cb(GtkWidget *widget, GdkEvent *event, void *data)
 static gboolean button_click_cb(GtkWidget *w, GdkEventButton *event,
 				gtk_user_data_t *user_data)
 {
-	launch_cmd(user_data->notification->command, TRUE);
-	hide_notification_window(user_data->plugin_data);
-	g_free(user_data);
+    // User clicked on this world notification command. Save this event in Kano Tracker.
+    // It will be audited in the form: "world-notification <byline>" to keep a counter.
+    char *tracker_cmd_prolog="kano-profile-cli increment_app_runtime 'world-notification ";
+    int tracker_cmd_len=strlen(tracker_cmd_prolog) + strlen(user_data->notification->byline) + (sizeof(gchar) * 4);
+    gchar *tracker_cmd=g_new0(gchar, tracker_cmd_len);
+    if (tracker_cmd) {
+        g_strlcpy(tracker_cmd, tracker_cmd_prolog, tracker_cmd_len);
+        g_strlcat(tracker_cmd, user_data->notification->byline, tracker_cmd_len);
+        g_strlcat(tracker_cmd, "' 0", tracker_cmd_len);
+    }
 
-	return TRUE;
+    // Launch the application pointed to by the "command" notification field
+    launch_cmd(user_data->notification->command, TRUE);
+    hide_notification_window(user_data->plugin_data);
+    g_free(user_data);
+
+    // Notification tracking is done after processing the visual work, to avoid UIX delays
+    if (tracker_cmd) {
+        launch_cmd(tracker_cmd, FALSE);
+        g_free(tracker_cmd);
+    }
+
+    return TRUE;
 }
 
 static void show_notification_window(kano_notifications_t *plugin_data,
