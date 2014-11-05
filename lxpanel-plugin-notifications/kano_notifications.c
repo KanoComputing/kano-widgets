@@ -641,6 +641,7 @@ static gboolean button_click_cb(GtkWidget *w, GdkEventButton *event,
     // Notification tracking is done after processing the visual work, to avoid UIX delays
     if (tracker_cmd) {
         launch_cmd(tracker_cmd, FALSE);
+        g_free(tracker_cmd);
     }
 
     return TRUE;
