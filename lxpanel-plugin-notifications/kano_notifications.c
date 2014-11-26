@@ -66,8 +66,8 @@
 	STR(NOTIFICATION_IMAGE_WIDTH) "x" STR(NOTIFICATION_IMAGE_HEIGHT) \
 	"/%s/%s_levelup.png")
 #define WORLD_IMG_BASE_PATH ("/usr/share/kano-profile/media/images/notification/" \
-    STR(NOTIFICATION_IMAGE_WIDTH)  "x" STR(NOTIFICATION_IMAGE_HEIGHT) \
-        "/notification.png")
+	STR(NOTIFICATION_IMAGE_WIDTH)  "x" STR(NOTIFICATION_IMAGE_HEIGHT) \
+	"/notification.png")
 
 #define LEVEL_TITLE "New level!"
 #define LEVEL_BYLINE "You're now Level %s"
@@ -137,41 +137,41 @@ gchar *get_conf_filename(void);
 
 gchar *get_fifo_filename(void)
 {
-    struct passwd *pw = getpwuid(getuid());
-    const char *homedir = pw->pw_dir;
+	struct passwd *pw = getpwuid(getuid());
+	const char *homedir = pw->pw_dir;
 
-    // You are responsible for freeing the returned char buffer
-    int buff_len=strlen(homedir) + strlen(FIFO_FILENAME) + sizeof(char) * 2;
-    gchar *fifo_filename = g_new0(gchar, buff_len);
-    if (!fifo_filename) {
-        return NULL;
-    }
-    else {
-        g_strlcpy(fifo_filename, homedir, buff_len);
-        g_strlcat(fifo_filename, "/", buff_len);
-        g_strlcat(fifo_filename, FIFO_FILENAME, buff_len);
-        return (fifo_filename);
-    }
+	/* You are responsible for freeing the returned char buffer */
+	int buff_len=strlen(homedir) + strlen(FIFO_FILENAME) + sizeof(char) * 2;
+	gchar *fifo_filename = g_new0(gchar, buff_len);
+	if (!fifo_filename) {
+		return NULL;
+	}
+	else {
+		g_strlcpy(fifo_filename, homedir, buff_len);
+		g_strlcat(fifo_filename, "/", buff_len);
+		g_strlcat(fifo_filename, FIFO_FILENAME, buff_len);
+		return (fifo_filename);
+	}
 }
 
 
 gchar *get_conf_filename(void)
 {
-    struct passwd *pw = getpwuid(getuid());
-    const char *homedir = pw->pw_dir;
+	struct passwd *pw = getpwuid(getuid());
+	const char *homedir = pw->pw_dir;
 
-    // You are responsible for freeing the returned char buffer
-    int buff_len=strlen(homedir) + strlen(CONF_FILENAME) + sizeof(char) * 2;
-    gchar *conf_filename = g_new0(gchar, buff_len);
-    if (!conf_filename) {
-        return NULL;
-    }
-    else {
-        g_strlcpy(conf_filename, homedir, buff_len);
-        g_strlcat(conf_filename, "/", buff_len);
-        g_strlcat(conf_filename, CONF_FILENAME, buff_len);
-        return (conf_filename);
-    }
+	/* You are responsible for freeing the returned char buffer */
+	int buff_len=strlen(homedir) + strlen(CONF_FILENAME) + sizeof(char) * 2;
+	gchar *conf_filename = g_new0(gchar, buff_len);
+	if (!conf_filename) {
+		return NULL;
+	}
+	else {
+		g_strlcpy(conf_filename, homedir, buff_len);
+		g_strlcat(conf_filename, "/", buff_len);
+		g_strlcat(conf_filename, CONF_FILENAME, buff_len);
+		return (conf_filename);
+	}
 }
 
 
@@ -249,39 +249,40 @@ static GtkWidget *plugin_constructor(LXPanel *panel, config_setting_t *settings)
 	plugin_data->window = NULL;
 	plugin_data->queue = NULL;
 
-	plugin_data->paused = FALSE; // TODO load from the configuration
+	plugin_data->paused = FALSE; /* TODO load from the configuration */
 
 	g_mutex_init(&(plugin_data->lock));
 
-        // Create the pipe file
-        gchar *pipe_filename=get_fifo_filename();
-        if (pipe_filename) {
+	/* Create the pipe file */
+	gchar *pipe_filename=get_fifo_filename();
+	if (pipe_filename) {
+		/* remove previous instance of the pipe */
+		unlink(pipe_filename);
 
-            // remove previous instance of the pipe
-            unlink(pipe_filename);
+		/* Set access mode as wide as possible
+		   (this depends on current umask) */
+		if (mkfifo(pipe_filename, S_IWUSR | S_IRUSR | S_IRGRP |
+					  S_IWGRP | S_IROTH) < 0) {
+			perror("mkfifo");
+			return 0;
+		} else {
+			/* Enforce write mode to group and others */
+			chmod (pipe_filename, 0666);
+		}
 
-            // Set access mode as wide as possible (this depends on current umask)
-            if (mkfifo(pipe_filename, S_IWUSR | S_IRUSR | S_IRGRP | S_IWGRP | S_IROTH) < 0) {
-		perror("mkfifo");
-		return 0;
-            }
-            else {
-                // Enforce write mode to group and others
-                chmod (pipe_filename, 0666);
-            }
+		plugin_data->fifo_fd = open(pipe_filename, O_RDWR | O_NONBLOCK,
+					    0);
+		if (plugin_data->fifo_fd < 0) {
+			perror("open");
+			return 0;
+		}
 
-            plugin_data->fifo_fd = open(pipe_filename, O_RDWR | O_NONBLOCK, 0);
-            if (plugin_data->fifo_fd < 0) {
-		perror("open");
-		return 0;
-            }
-
-            plugin_data->fifo_channel = g_io_channel_unix_new(plugin_data->fifo_fd);
-            plugin_data->watch_id = g_io_add_watch(plugin_data->fifo_channel,
-                                                   G_IO_IN, (GIOFunc)io_watch_cb,
-						   (gpointer)plugin_data);
-            g_free(pipe_filename);
-        }
+		plugin_data->fifo_channel = g_io_channel_unix_new(plugin_data->fifo_fd);
+		plugin_data->watch_id = g_io_add_watch(plugin_data->fifo_channel,
+						       G_IO_IN, (GIOFunc)io_watch_cb,
+						       (gpointer)plugin_data);
+		g_free(pipe_filename);
+	}
 
 	load_conf(&(plugin_data->conf));
 
@@ -295,7 +296,8 @@ static GtkWidget *plugin_constructor(LXPanel *panel, config_setting_t *settings)
 
 static void plugin_destructor(gpointer data)
 {
-        // FIXME: We are not being called during destructor. lxpanel is agressively killed?
+	/* FIXME: We are not being called during destructor.
+	   lxpanel is agressively killed? */
 
 	kano_notifications_t *plugin_data = (kano_notifications_t *)data;
 
@@ -304,11 +306,11 @@ static void plugin_destructor(gpointer data)
 	g_io_channel_unref(plugin_data->fifo_channel);
 	close(plugin_data->fifo_fd);
 
-        gchar *pipe_filename=get_fifo_filename();
-        if (pipe_filename) {
-            unlink(pipe_filename);
-            g_free(pipe_filename);
-        }
+	gchar *pipe_filename=get_fifo_filename();
+	if (pipe_filename) {
+		unlink(pipe_filename);
+		g_free(pipe_filename);
+	}
 
 	close_notification(plugin_data);
 
@@ -622,33 +624,33 @@ static gboolean button_leave_cb(GtkWidget *widget, GdkEvent *event, void *data)
 static gboolean button_click_cb(GtkWidget *w, GdkEventButton *event,
 				gtk_user_data_t *user_data)
 {
-    // User clicked on this world notification command. Save this event in Kano Tracker.
-    // It will be audited in the form: "world-notification <byline>" to keep a counter.
-    char *tracker_cmd_prolog="kano-profile-cli increment_app_runtime 'world-notification ";
-    int tracker_cmd_len=strlen(tracker_cmd_prolog) + strlen(user_data->notification->byline) + (sizeof(gchar) * 4);
-    gchar *tracker_cmd=g_new0(gchar, tracker_cmd_len);
-    if (tracker_cmd) {
-        g_strlcpy(tracker_cmd, tracker_cmd_prolog, tracker_cmd_len);
-        g_strlcat(tracker_cmd, user_data->notification->byline, tracker_cmd_len);
-        g_strlcat(tracker_cmd, "' 0", tracker_cmd_len);
-    }
+	/* User clicked on this world notification command. Save this event in Kano Tracker.
+	   It will be audited in the form: "world-notification <byline>" to keep a counter. */
+	char *tracker_cmd_prolog="kano-profile-cli increment_app_runtime 'world-notification ";
+	int tracker_cmd_len=strlen(tracker_cmd_prolog) + strlen(user_data->notification->byline) + (sizeof(gchar) * 4);
+	gchar *tracker_cmd=g_new0(gchar, tracker_cmd_len);
+	if (tracker_cmd) {
+		g_strlcpy(tracker_cmd, tracker_cmd_prolog, tracker_cmd_len);
+		g_strlcat(tracker_cmd, user_data->notification->byline, tracker_cmd_len);
+		g_strlcat(tracker_cmd, "' 0", tracker_cmd_len);
+	}
 
-    // Launch the application pointed to by the "command" notification field
-    launch_cmd(user_data->notification->command, TRUE);
-    hide_notification_window(user_data->plugin_data);
-    g_free(user_data);
+	/* Launch the application pointed to by the "command" notification field */
+	launch_cmd(user_data->notification->command, TRUE);
+	hide_notification_window(user_data->plugin_data);
+	g_free(user_data);
 
-    // Notification tracking is done after processing the visual work, to avoid UIX delays
-    if (tracker_cmd) {
-        launch_cmd(tracker_cmd, FALSE);
-        g_free(tracker_cmd);
-    }
+	/* Notification tracking is done after processing the visual work, to avoid UIX delays */
+	if (tracker_cmd) {
+		launch_cmd(tracker_cmd, FALSE);
+		g_free(tracker_cmd);
+	}
 
-    return TRUE;
+	return TRUE;
 }
 
 static void show_notification_window(kano_notifications_t *plugin_data,
-			      notification_info_t *notification)
+				     notification_info_t *notification)
 {
 	GtkWidget *win = gtk_window_new(GTK_WINDOW_POPUP);
 	plugin_data->window = win;
@@ -677,7 +679,7 @@ static void show_notification_window(kano_notifications_t *plugin_data,
 	GtkStyle *style;
 	GtkWidget *eventbox = gtk_event_box_new();
 	gtk_signal_connect(GTK_OBJECT(eventbox), "button-release-event",
-                     GTK_SIGNAL_FUNC(eventbox_click_cb), plugin_data);
+			   GTK_SIGNAL_FUNC(eventbox_click_cb), plugin_data);
 
 	GdkColor white;
 	gdk_color_parse("white", &white);
