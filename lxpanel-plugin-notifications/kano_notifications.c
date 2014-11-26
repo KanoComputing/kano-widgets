@@ -401,7 +401,8 @@ static notification_info_t *get_notification_by_id(gchar *id)
 		bufsize += strlen(LEVEL_IMG_BASE_PATH);
 		bufsize += strlen(tokens[0]) + strlen(tokens[1]);
 		data->image_path = g_new0(gchar, bufsize+1);
-		g_sprintf(data->image_path, LEVEL_IMG_BASE_PATH, tokens[0], tokens[1]);
+		g_sprintf(data->image_path, LEVEL_IMG_BASE_PATH,
+			  tokens[0], tokens[1]);
 
 		/* Allocate and set the sound */
 		bufsize = strlen(CHEER_SOUND);
@@ -492,12 +493,15 @@ static notification_info_t *get_notification_by_id(gchar *id)
 		bufsize = strlen(AWARD_IMG_BASE_PATH);
 		bufsize += strlen(tokens[0]) + 2*strlen(tokens[1]);
 		data->image_path = g_new0(gchar, bufsize+1);
-		g_sprintf(data->image_path, AWARD_IMG_BASE_PATH, tokens[0], tokens[1], tokens[1]);
+		g_sprintf(data->image_path, AWARD_IMG_BASE_PATH,
+			  tokens[0], tokens[1], tokens[1]);
 	} else {
 		bufsize = strlen(AWARD_IMG_BASE_PATH);
-		bufsize += strlen(tokens[0]) + strlen(tokens[1]) + strlen(tokens[2]);
+		bufsize += strlen(tokens[0]) + strlen(tokens[1]) +
+				  strlen(tokens[2]);
 		data->image_path = g_new0(gchar, bufsize+1);
-		g_sprintf(data->image_path, AWARD_IMG_BASE_PATH, tokens[0], tokens[1], tokens[2]);
+		g_sprintf(data->image_path, AWARD_IMG_BASE_PATH,
+			  tokens[0], tokens[1], tokens[2]);
 	}
 
 	/* Allocate and set the sound */
@@ -624,23 +628,31 @@ static gboolean button_leave_cb(GtkWidget *widget, GdkEvent *event, void *data)
 static gboolean button_click_cb(GtkWidget *w, GdkEventButton *event,
 				gtk_user_data_t *user_data)
 {
-	/* User clicked on this world notification command. Save this event in Kano Tracker.
-	   It will be audited in the form: "world-notification <byline>" to keep a counter. */
-	char *tracker_cmd_prolog="kano-profile-cli increment_app_runtime 'world-notification ";
-	int tracker_cmd_len=strlen(tracker_cmd_prolog) + strlen(user_data->notification->byline) + (sizeof(gchar) * 4);
+	/* User clicked on this world notification command.
+	   Save this event in Kano Tracker. It will be audited
+	   in the form: "world-notification <byline>" to keep a counter. */
+	char *tracker_cmd_prolog = "kano-profile-cli increment_app_runtime "
+				   "'world-notification ";
+	int tracker_cmd_len = strlen(tracker_cmd_prolog) +
+				     strlen(user_data->notification->byline) +
+				     (sizeof(gchar) * 4);
 	gchar *tracker_cmd=g_new0(gchar, tracker_cmd_len);
+
 	if (tracker_cmd) {
 		g_strlcpy(tracker_cmd, tracker_cmd_prolog, tracker_cmd_len);
-		g_strlcat(tracker_cmd, user_data->notification->byline, tracker_cmd_len);
+		g_strlcat(tracker_cmd, user_data->notification->byline,
+			  tracker_cmd_len);
 		g_strlcat(tracker_cmd, "' 0", tracker_cmd_len);
 	}
 
-	/* Launch the application pointed to by the "command" notification field */
+	/* Launch the application pointed to by the "command"
+	   notification field */
 	launch_cmd(user_data->notification->command, TRUE);
 	hide_notification_window(user_data->plugin_data);
 	g_free(user_data);
 
-	/* Notification tracking is done after processing the visual work, to avoid UIX delays */
+	/* Notification tracking is done after processing the visual work,
+	   to avoid UIX delays */
 	if (tracker_cmd) {
 		launch_cmd(tracker_cmd, FALSE);
 		g_free(tracker_cmd);
@@ -853,6 +865,7 @@ static gboolean io_watch_cb(GIOChannel *source, GIOCondition cond, gpointer data
 
 	status = g_io_channel_read_line(source, &line, &len, &tpos, NULL);
 	if (status == G_IO_STATUS_NORMAL) {
+		/* Removes the newline character at the and of the line */
 		line[tpos] = '\0';
 
 		/* This has to come before the enabled check. */
