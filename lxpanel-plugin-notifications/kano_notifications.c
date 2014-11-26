@@ -30,6 +30,8 @@
 
 #include "parson.h"
 
+#define UPDATE_STATUS_FILE "/var/cache/kano-updater/status"
+
 #define FIFO_FILENAME ".kano-notifications.fifo"
 #define CONF_FILENAME ".kano-notifications.conf"
 
@@ -362,6 +364,87 @@ static void get_award_byline(gchar *json_file, gchar *key,
 	notification->byline = g_new0(gchar, strlen(byline) + 1);
 	g_strlcpy(notification->byline, byline, strlen(byline) + 1);
 	json_value_free(root_value);
+}
+
+/*
+ * Check whether the user is registered in kano world
+ *
+ * This will open the profile json file and see whether it has the
+ * 'kanoworld_id' key.
+ */
+static gboolean is_user_registered()
+{
+	const gchar *pf_tmp = "/home/%s/.kanoprofile/profile/profile.json";
+	size_t bufsize = strlen(pf_tmp);
+
+	/* Get username for the homedir path */
+	uid_t uid = geteuid();
+	struct passwd *pw = getpwuid(uid);
+	if (!pw)
+		/* We assume the user is not logged in when we cannot
+		   even get the username. */
+		return FALSE;
+
+	/* Put the path together */
+	bufsize = strlen(pf_tmp) + strlen(pw->pw_name) + 2;
+	gchar *profile = g_new0(gchar, bufsize);
+	g_sprintf(profile, pf_tmp, pw->pw_name);
+
+	/* Open the JSON */
+	JSON_Value *root_value = NULL;
+	JSON_Object *root = NULL;
+	const gchar *id = NULL;
+
+	root_value = json_parse_file(profile);
+	g_free(profile);
+
+	/* We expect dict as the root value of the JSON.
+	   The assumption is that the user is not logged in if this
+	   fails. */
+	if (json_value_get_type(root_value) != JSONObject) {
+		json_value_free(root_value);
+		return FALSE;
+	}
+
+	root = json_value_get_object(root_value);
+	id = json_object_get_string(root, "kanoworld_id");
+	json_value_free(root_value);
+	return !id;
+}
+
+/*
+ * Check whether there's internet available.
+ */
+static gboolean is_internet()
+{
+	return system("is_internet") == 0;
+}
+
+/*
+ * Is update available?
+ */
+static gboolean is_update_available()
+{
+	FILE *fp;
+	gchar *line = NULL;
+	size_t len = 0;
+	ssize_t read;
+	int value = 0;
+
+	fp = fopen(UPDATE_STATUS_FILE, "r");
+	if (fp == NULL)
+		/* In case the status file isn't there, we say there
+		   are no updates available. */
+		return FALSE;
+
+	gchar *key = "update_available";
+	while ((read = getline(&line, &len, fp)) != -1) {
+		if (strncmp(line, key, strlen(key)) == 0) {
+			value = atoi(line + strlen(key));
+		}
+	}
+
+	return value == 1;
 }
 
 static notification_info_t *get_notification_by_id(gchar *id)
@@ -954,8 +1037,13 @@ static gboolean io_watch_cb(GIOChannel *source, GIOCondition cond, gpointer data
 			plugin_data->queue = g_list_append(plugin_data->queue, data);
 
 			if (g_list_length(plugin_data->queue) <= 1 &&
-			    !plugin_data->paused)
+			    !plugin_data->paused) {
+				/* Queue additional update and world
+				   notifications here */
+				// TODO
+
 				show_notification_window(plugin_data, data);
+			}
 
 			g_mutex_unlock(&(plugin_data->lock));
 		}
