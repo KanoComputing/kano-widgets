@@ -61,6 +61,8 @@
 #define __STR_HELPER(x) #x
 #define STR(x) __STR_HELPER(x)
 
+#define MAX_QUEUE_LEN 50
+
 #define LEVEL_IMG_BASE_PATH ("/usr/share/kano-profile/media/images/%s/" \
 	STR(NOTIFICATION_IMAGE_WIDTH)  "x" STR(NOTIFICATION_IMAGE_HEIGHT) \
 		"/Level-%s.png")
@@ -86,6 +88,26 @@
 #define TITLE_COLOUR "#323232"
 #define BYLINE_COLOUR "#6e6e6e"
 
+#define ON_TIME 6000
+
+#define REGISTER_REMINDER \
+	"{" \
+		"\"title\": \"Kano World\", " \
+		"\"byline\": \"Remember to register\", " \
+		"\"image\": \"/usr/share/kano-profile/media/images/notification/280x170/notification.png\", " \
+		"\"sound\": null, " \
+		"\"command\": \"kano-login 3\" " \
+	"}"
+
+#define UPDATE_REMINDER \
+	"{" \
+		"\"title\": \"Updates Available\"," \
+		"\"byline\": \"Click here to update your Kano\"," \
+		"\"image\": \"/usr/share/kano-profile/media/images/notification/280x170/notification.png\"," \
+		"\"sound\": null," \
+		"\"command\": \"sudo kano-updater\"" \
+	"}"
+
 struct notification_conf {
 	gboolean enabled;
 	gboolean allow_world_notifications;
@@ -102,6 +124,7 @@ typedef struct {
 
 	GMutex lock;
 	GList *queue;
+	gboolean queue_has_reminders;
 
 	GtkWidget *window;
 	guint window_timeout;
@@ -250,6 +273,7 @@ static GtkWidget *plugin_constructor(LXPanel *panel, config_setting_t *settings)
 
 	plugin_data->window = NULL;
 	plugin_data->queue = NULL;
+	plugin_data->queue_has_reminders = FALSE;
 
 	plugin_data->paused = FALSE; /* TODO load from the configuration */
 
@@ -409,7 +433,7 @@ static gboolean is_user_registered()
 	root = json_value_get_object(root_value);
 	id = json_object_get_string(root, "kanoworld_id");
 	json_value_free(root_value);
-	return !id;
+	return id != NULL;
 }
 
 /*
@@ -437,10 +461,11 @@ static gboolean is_update_available()
 		   are no updates available. */
 		return FALSE;
 
-	gchar *key = "update_available";
+	gchar *key = "update_available=";
 	while ((read = getline(&line, &len, fp)) != -1) {
 		if (strncmp(line, key, strlen(key)) == 0) {
 			value = atoi(line + strlen(key));
+			break;
 		}
 	}
 
@@ -883,9 +908,39 @@ static void show_notification_window(kano_notifications_t *plugin_data,
 		g_free(aplay_cmd);
 	}
 
-	plugin_data->window_timeout = g_timeout_add(6000,
+	plugin_data->window_timeout = g_timeout_add(ON_TIME,
 				(GSourceFunc) close_notification,
 				(gpointer) plugin_data);
+}
+
+/* This will queue and show the kano-world registration and updater reminders
+ * if needed.
+ *
+ * Expects plugin_data to be locked.
+ */
+static void show_reminders(kano_notifications_t *plugin_data)
+{
+	/* Both reminders only make sense when the user is online */
+	if (!is_internet())
+		return;
+
+	notification_info_t *notif = NULL;
+	if (!is_user_registered()) {
+		notif = get_json_notification(REGISTER_REMINDER);
+		plugin_data->queue = g_list_append(plugin_data->queue, notif);
+
+	}
+
+	if (is_update_available()) {
+		notif = get_json_notification(UPDATE_REMINDER);
+		plugin_data->queue = g_list_append(plugin_data->queue, notif);
+	}
+
+
+	if (g_list_length(plugin_data->queue) > 0) {
+		notif = g_list_nth_data(plugin_data->queue, 0);
+		show_notification_window(plugin_data, notif);
+	}
 }
 
 static gboolean close_notification(kano_notifications_t *plugin_data)
@@ -904,6 +959,15 @@ static gboolean close_notification(kano_notifications_t *plugin_data)
 		if (g_list_length(plugin_data->queue) >= 1) {
 			notification_info_t *notification = g_list_nth_data(plugin_data->queue, 0);
 			show_notification_window(plugin_data, notification);
+		} else {
+			/* If this was a las one in a row, queue additional
+			   reminders. */
+			if (!plugin_data->queue_has_reminders) {
+				plugin_data->queue_has_reminders = TRUE;
+				show_reminders(plugin_data);
+			} else {
+				plugin_data->queue_has_reminders = FALSE;
+			}
 		}
 
 		g_mutex_unlock(&(plugin_data->lock));
@@ -1027,9 +1091,12 @@ static gboolean io_watch_cb(GIOChannel *source, GIOCondition cond, gpointer data
 			g_mutex_lock(&(plugin_data->lock));
 
 			/* Don't queue world notifications in case they are
-			   being filtered. */
-			if (data->type && g_strcmp0(data->type, "world") == 0 &&
-			    !plugin_data->conf.allow_world_notifications) {
+			   being filtered. This also ignores any incomming
+			   notifications beyond the maximum limit set. */
+			if ((data->type && g_strcmp0(data->type, "world") == 0 &&
+			    !plugin_data->conf.allow_world_notifications) ||
+			    g_list_length(plugin_data->queue) >=
+			    MAX_QUEUE_LEN) {
 				g_mutex_unlock(&(plugin_data->lock));
 				return TRUE;
 			}
@@ -1037,13 +1104,8 @@ static gboolean io_watch_cb(GIOChannel *source, GIOCondition cond, gpointer data
 			plugin_data->queue = g_list_append(plugin_data->queue, data);
 
 			if (g_list_length(plugin_data->queue) <= 1 &&
-			    !plugin_data->paused) {
-				/* Queue additional update and world
-				   notifications here */
-				// TODO
-
+			    !plugin_data->paused)
 				show_notification_window(plugin_data, data);
-			}
 
 			g_mutex_unlock(&(plugin_data->lock));
 		}
