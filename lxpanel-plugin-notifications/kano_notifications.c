@@ -105,14 +105,22 @@
 		"\"byline\": \"Click here to update your Kano\"," \
 		"\"image\": \"/usr/share/kano-profile/media/images/notification/280x170/notification.png\"," \
 		"\"sound\": null," \
-		"\"command\": \"sudo kano-updater\"" \
+		"\"command\": \"sudo check-for-updates -d\"" \
 	"}"
 
+/*
+ * The structure used by the load_conf() and save_conf() functions to
+ * hold the configuration of the widget.
+ */
 struct notification_conf {
 	gboolean enabled;
 	gboolean allow_world_notifications;
 };
 
+/*
+ * The main data structure of the plugin. Kept as plugin_data in
+ * the lxpanel's Plugin object.
+ */
 typedef struct {
 	int fifo_fd;
 	GIOChannel *fifo_channel;
@@ -134,6 +142,9 @@ typedef struct {
 	struct notification_conf conf;
 } kano_notifications_t;
 
+/*
+ * Represents a single notification to be displayed.
+ */
 typedef struct {
 	gchar *image_path;
 	gchar *title;
@@ -159,7 +170,11 @@ static void launch_cmd(const char *cmd, gboolean hourglass);
 gchar *get_fifo_filename(void);
 gchar *get_conf_filename(void);
 
-
+/*
+ * Resolve the path to the pipe file in the user's $HOME directory.
+ *
+ * WARNING: You're expected to g_free() the string returned.
+ */
 gchar *get_fifo_filename(void)
 {
 	struct passwd *pw = getpwuid(getuid());
@@ -180,6 +195,11 @@ gchar *get_fifo_filename(void)
 }
 
 
+/*
+ * Resolve the path to the config file in the user's $HOME directory.
+ *
+ * WARNING: You're expected to g_free() the string returned.
+ */
 gchar *get_conf_filename(void)
 {
 	struct passwd *pw = getpwuid(getuid());
@@ -200,6 +220,9 @@ gchar *get_conf_filename(void)
 }
 
 
+/*
+ * Save the configuration into the current user's $HOME.
+ */
 int save_conf(struct notification_conf *conf)
 {
 	int status;
@@ -225,6 +248,9 @@ int save_conf(struct notification_conf *conf)
 }
 
 
+/*
+ * Load the configuration from the current user's $HOME.
+ */
 void load_conf(struct notification_conf *conf)
 {
 	gchar *conf_file = get_conf_filename();
@@ -252,7 +278,7 @@ void load_conf(struct notification_conf *conf)
 		json_value_free(root_value);
 	}
 
-	/* There's no or malformed configuration, so create a default one. */
+	/* There's no or broken configuration, so create a default one. */
 	conf->enabled = TRUE;
 	conf->allow_world_notifications = TRUE;
 	save_conf(conf);
@@ -261,6 +287,10 @@ void load_conf(struct notification_conf *conf)
 }
 
 
+/*
+ * This is the entry point of the plugin in LXPanel. It's ment to
+ * initialise the plugin_data structure.
+ */
 static GtkWidget *plugin_constructor(LXPanel *panel, config_setting_t *settings)
 {
 	/* allocate our private structure instance */
@@ -303,6 +333,7 @@ static GtkWidget *plugin_constructor(LXPanel *panel, config_setting_t *settings)
 			return 0;
 		}
 
+		/* Start watching the pipe for input. */
 		plugin_data->fifo_channel = g_io_channel_unix_new(plugin_data->fifo_fd);
 		plugin_data->watch_id = g_io_add_watch(plugin_data->fifo_channel,
 						       G_IO_IN, (GIOFunc)io_watch_cb,
@@ -320,6 +351,9 @@ static GtkWidget *plugin_constructor(LXPanel *panel, config_setting_t *settings)
 	return pwid;
 }
 
+/*
+ * The oposite of plugin_constructor, to free up resources.
+ */
 static void plugin_destructor(gpointer data)
 {
 	/* FIXME: We are not being called during destructor.
@@ -345,6 +379,9 @@ static void plugin_destructor(gpointer data)
 	g_free(plugin_data);
 }
 
+/*
+ * A shortcut to freeing the whole notification_info_t function.
+ */
 static void free_notification(notification_info_t *data)
 {
 	g_free(data->image_path);
