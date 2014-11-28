@@ -393,39 +393,6 @@ static void free_notification(notification_info_t *data)
 	g_free(data);
 }
 
-static void get_award_byline(gchar *json_file, gchar *key,
-			     notification_info_t *notification)
-{
-	JSON_Value *root_value = NULL;
-	JSON_Object *root = NULL;
-	JSON_Object *award = NULL;
-	const char *byline = NULL;
-
-	notification->byline = NULL;
-
-	root_value = json_parse_file(json_file);
-	if (json_value_get_type(root_value) != JSONObject) {
-		json_value_free(root_value);
-		return;
-	}
-
-	root = json_value_get_object(root_value);
-	award = json_object_get_object(root, key);
-	if (!award) {
-		json_value_free(root_value);
-		return;
-	}
-
-	byline = json_object_get_string(award, "title");
-	if (!byline) {
-		json_value_free(root_value);
-		return;
-	}
-
-	notification->byline = g_new0(gchar, strlen(byline) + 1);
-	g_strlcpy(notification->byline, byline, strlen(byline) + 1);
-	json_value_free(root_value);
-}
 
 /*
  * Check whether the user is registered in kano world
@@ -509,6 +476,55 @@ static gboolean is_update_available()
 	return value == 1;
 }
 
+
+/*
+ * Parse the byline from the JSON file that represents the award
+ * (badges, environments, avatars)
+ */
+static void get_award_byline(gchar *json_file, gchar *key,
+			     notification_info_t *notification)
+{
+	JSON_Value *root_value = NULL;
+	JSON_Object *root = NULL;
+	JSON_Object *award = NULL;
+	const char *byline = NULL;
+
+	notification->byline = NULL;
+
+	root_value = json_parse_file(json_file);
+	if (json_value_get_type(root_value) != JSONObject) {
+		json_value_free(root_value);
+		return;
+	}
+
+	root = json_value_get_object(root_value);
+	award = json_object_get_object(root, key);
+	if (!award) {
+		json_value_free(root_value);
+		return;
+	}
+
+	byline = json_object_get_string(award, "title");
+	if (!byline) {
+		json_value_free(root_value);
+		return;
+	}
+
+	notification->byline = g_new0(gchar, strlen(byline) + 1);
+	g_strlcpy(notification->byline, byline, strlen(byline) + 1);
+	json_value_free(root_value);
+}
+
+/*
+ * Prepare a notification_t instance to be displayed based on an id
+ * for it. The format of the id is the following:
+ *
+ *  - badges:application:feedbacker
+ *  - avatars:conductor:conductor_1
+ *
+ * TODO: Now that the widget supports JSON notifications, this logic
+ *       could be moved outside of the widget itself.
+ */
 static notification_info_t *get_notification_by_id(gchar *id)
 {
 	gchar **tokens = g_strsplit(id, ":", 0);
@@ -658,6 +674,21 @@ static notification_info_t *get_notification_by_id(gchar *id)
 	return data;
 }
 
+/*
+ * Construct a notification from a JSON string.
+ *
+ * Example JSON data:
+ * {
+ *     "title": "Hello",
+ *     "byline": "How are you today?",
+ *     "imgae": "/path/to/a/picture.png",
+ *     "sound": "/path/to/a/wav-file.wav",
+ *     "command": "lxterminal",
+ *     "type": "normal",
+ * }
+ *
+ * All keys except the title and byline are optional.
+ */
 static notification_info_t *get_json_notification(gchar *json_data)
 {
 	JSON_Value *root_value = NULL;
@@ -727,6 +758,10 @@ static notification_info_t *get_json_notification(gchar *json_data)
 	return data;
 }
 
+
+/*
+ * Destroy the notification and show the next one in the queue.
+ */
 static void hide_notification_window(kano_notifications_t *plugin_data)
 {
 	if (g_mutex_trylock(&(plugin_data->lock)) == TRUE) {
@@ -736,6 +771,9 @@ static void hide_notification_window(kano_notifications_t *plugin_data)
 	}
 }
 
+/*
+ * A callback for when the user clicks on the image.
+ */
 static gboolean eventbox_click_cb(GtkWidget *w, GdkEventButton *event,
 				  kano_notifications_t *plugin_data)
 {
@@ -743,6 +781,9 @@ static gboolean eventbox_click_cb(GtkWidget *w, GdkEventButton *event,
 	return TRUE;
 }
 
+/*
+ * Set the hover cursor of the launch button to HAND1
+ */
 static gboolean button_realize_cb(GtkWidget *widget, void *data)
 {
 	GdkCursor *cursor;
@@ -754,6 +795,10 @@ static gboolean button_realize_cb(GtkWidget *widget, void *data)
 	return TRUE;
 }
 
+
+/*
+ * The command button's hover in callback. Changes the colour of it.
+ */
 static gboolean button_enter_cb(GtkWidget *widget, GdkEvent *event, void *data)
 {
 	GdkColor button_bg;
@@ -762,6 +807,10 @@ static gboolean button_enter_cb(GtkWidget *widget, GdkEvent *event, void *data)
 	return TRUE;
 }
 
+
+/*
+ * The command button's hover out callback. Changes the colour of it.
+ */
 static gboolean button_leave_cb(GtkWidget *widget, GdkEvent *event, void *data)
 {
 	GdkColor button_bg;
@@ -770,6 +819,10 @@ static gboolean button_leave_cb(GtkWidget *widget, GdkEvent *event, void *data)
 	return TRUE;
 }
 
+
+/*
+ * Launch the command that is associated with the notification.
+ */
 static gboolean button_click_cb(GtkWidget *w, GdkEventButton *event,
 				gtk_user_data_t *user_data)
 {
@@ -806,6 +859,14 @@ static gboolean button_click_cb(GtkWidget *w, GdkEventButton *event,
 	return TRUE;
 }
 
+
+/*
+ * Constructs the notification window and display's it.
+ *
+ * This function also sets up a timer that will destroy the window after
+ * a set period of time. It's expected that no notification is being
+ * shown at the time of this function call.
+ */
 static void show_notification_window(kano_notifications_t *plugin_data,
 				     notification_info_t *notification)
 {
@@ -950,6 +1011,7 @@ static void show_notification_window(kano_notifications_t *plugin_data,
 				(gpointer) plugin_data);
 }
 
+
 /* This will queue and show the kano-world registration and updater reminders
  * if needed.
  *
@@ -980,6 +1042,13 @@ static void show_reminders(kano_notifications_t *plugin_data)
 	}
 }
 
+
+/*
+ * Destroy the notification window and free up the resources.
+ *
+ * If there was another notification queued up after this one, it will
+ * show it.
+ */
 static gboolean close_notification(kano_notifications_t *plugin_data)
 {
 	if (plugin_data->window != NULL) {
@@ -994,6 +1063,7 @@ static gboolean close_notification(kano_notifications_t *plugin_data)
 
 
 		if (g_list_length(plugin_data->queue) >= 1) {
+			/* Show the next one in the queue */
 			notification_info_t *notification = g_list_nth_data(plugin_data->queue, 0);
 			show_notification_window(plugin_data, notification);
 		} else {
@@ -1013,6 +1083,10 @@ static gboolean close_notification(kano_notifications_t *plugin_data)
 	return FALSE;
 }
 
+
+/*
+ * Non-blocking way of launching a command.
+ */
 static void launch_cmd(const char *cmd, gboolean hourglass)
 {
 	GAppInfo *appinfo = NULL;
@@ -1039,6 +1113,17 @@ static void launch_cmd(const char *cmd, gboolean hourglass)
 	}
 }
 
+
+/*
+ * The main loop of this widget. It sets up an IO watch for the pipe and
+ * waits for incomming data. It will trigger different actions based on
+ * the data received.
+ *
+ * WARNING: I've seen some deadlocks when doing too much within the
+ *          handler itself. If the action takes a long time, it's better
+ *          to schedule it for the GTK main loop to execute outside of
+ *          this code path.
+ */
 static gboolean io_watch_cb(GIOChannel *source, GIOCondition cond, gpointer data)
 {
 	kano_notifications_t *plugin_data = (kano_notifications_t *)data;
