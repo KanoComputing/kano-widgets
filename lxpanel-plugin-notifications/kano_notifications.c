@@ -295,7 +295,7 @@ void load_conf(struct notification_conf *conf)
 
 
 /*
- * This is the entry point of the plugin in LXPanel. It's ment to
+ * This is the entry point of the plugin in LXPanel. It's meant to
  * initialise the plugin_data structure.
  */
 static GtkWidget *plugin_constructor(LXPanel *panel, config_setting_t *settings)
