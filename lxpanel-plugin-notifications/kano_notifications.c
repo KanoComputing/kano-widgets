@@ -98,7 +98,7 @@
 	"{" \
 		"\"title\": \"Kano World\", " \
 		"\"byline\": \"Remember to register\", " \
-		"\"image\": \"/usr/share/kano-profile/media/images/notification/280x170/notification.png\", " \
+		"\"image\": \"/usr/share/kano-profile/media/images/notification/280x170/register.png\", " \
 		"\"sound\": null, " \
 		"\"command\": \"kano-login 3\" " \
 	"}"
@@ -107,7 +107,7 @@
 	"{" \
 		"\"title\": \"Updates Available\"," \
 		"\"byline\": \"Click here to update your Kano\"," \
-		"\"image\": \"/usr/share/kano-profile/media/images/notification/280x170/notification.png\"," \
+		"\"image\": \"/usr/share/kano-profile/media/images/notification/280x170/update.png\"," \
 		"\"sound\": null," \
 		"\"command\": \"sudo check-for-updates -d\"" \
 	"}"
