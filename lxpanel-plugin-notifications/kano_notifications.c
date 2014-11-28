@@ -6,6 +6,10 @@
  *
  */
 
+/* TODO && FIXME: The next time we're adding things here it needs to be
+ *                split into several modules.
+ */
+
 #include <gtk/gtk.h>
 #include <gdk/gdk.h>
 #include <glib/gi18n.h>
@@ -107,6 +111,9 @@
 		"\"sound\": null," \
 		"\"command\": \"sudo check-for-updates -d\"" \
 	"}"
+
+#define KANO_PROFILE_CMD "kano-profile"
+#define KANO_LOGIN_CMD "kano-login 3"
 
 /*
  * The structure used by the load_conf() and save_conf() functions to
@@ -515,6 +522,26 @@ static void get_award_byline(gchar *json_file, gchar *key,
 	json_value_free(root_value);
 }
 
+
+/*
+ * Determine the appropriate command for an award notification based
+ * on whether the user is logged in to kano world or not.
+ */
+static void set_award_command(notification_info_t *notification)
+{
+	ssize_t len;
+	if (is_user_registered()) {
+		len = strlen(KANO_PROFILE_CMD);
+		notification->command = g_new0(gchar, len + 2);
+		g_strlcpy(notification->command, KANO_PROFILE_CMD, len);
+	} else {
+		len = strlen(KANO_LOGIN_CMD);
+		notification->command = g_new0(gchar, len + 2);
+		g_strlcpy(notification->command, KANO_LOGIN_CMD, len + 2);
+	}
+}
+
+
 /*
  * Prepare a notification_t instance to be displayed based on an id
  * for it. The format of the id is the following:
@@ -647,6 +674,8 @@ static notification_info_t *get_notification_by_id(gchar *id)
 		g_strfreev(tokens);
 		return NULL;
 	}
+
+	set_award_command(data);
 
 	/* Allocate and set image_path */
 	if (g_strcmp0(tokens[0], "avatars") == 0) {
