@@ -5,8 +5,8 @@
 #
 
 CC=gcc
-CFLAGS=`pkg-config --cflags lxpanel gtk+-2.0` -I/usr/include/libfm
-LIBS=`pkg-config --libs lxpanel gtk+-2.0` -lfm-gtk -lkdesk-hourglass
+CFLAGS=`pkg-config --cflags lxpanel gtk+-2.0`
+LIBS=`pkg-config --libs lxpanel gtk+-2.0`-lkdesk-hourglass
 SRC=kano_notifications.c parson.c
 BIN=kano_notifications.so
 INSTALL_PATH=/usr/lib/`dpkg-architecture -qDEB_HOST_MULTIARCH`/lxpanel/plugins/

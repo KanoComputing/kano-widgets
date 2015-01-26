@@ -106,6 +106,8 @@ typedef struct {
 	GtkWidget *window;
 	guint window_timeout;
 
+	int panel_height;
+
 	struct notification_conf conf;
 } kano_notifications_t;
 
@@ -127,8 +129,8 @@ typedef struct {
 static gboolean io_watch_cb(GIOChannel *source, GIOCondition cond, gpointer data);
 static gboolean close_notification(kano_notifications_t *plugin_data);
 
-static int plugin_constructor(Plugin *plugin, char **fp);
-static void plugin_destructor(Plugin *p);
+static GtkWidget *plugin_constructor(LXPanel *panel, config_setting_t *settings);
+static void plugin_destructor(gpointer data);
 static void launch_cmd(const char *cmd, gboolean hourglass);
 
 gchar *get_fifo_filename(void);
@@ -236,14 +238,15 @@ void load_conf(struct notification_conf *conf)
 }
 
 
-static int plugin_constructor(Plugin *plugin, char **fp)
+static GtkWidget *plugin_constructor(LXPanel *panel, config_setting_t *settings)
 {
-	(void)fp;
-
-	panel = plugin->panel;
-
 	/* allocate our private structure instance */
 	kano_notifications_t *plugin_data = g_new0(kano_notifications_t, 1);
+
+	GtkAllocation allocation;
+	gtk_widget_get_allocation(GTK_WIDGET(&(panel->window)), &allocation);
+	plugin_data->panel_height = allocation.height;
+
 
 	plugin_data->window = NULL;
 	plugin_data->queue = NULL;
@@ -284,20 +287,19 @@ static int plugin_constructor(Plugin *plugin, char **fp)
 
 	load_conf(&(plugin_data->conf));
 
+	GtkWidget *pwid = gtk_event_box_new();
+
 	/* put it where it belongs */
-	plugin->priv = plugin_data;
+	lxpanel_plugin_set_data(pwid, plugin_data, plugin_destructor);
 
-	/* This widget doesn't have any visual representation */
-	plugin->pwid = NULL;
-
-	return 1;
+	return pwid;
 }
 
-static void plugin_destructor(Plugin *p)
+static void plugin_destructor(gpointer data)
 {
         // FIXME: We are not being called during destructor. lxpanel is agressively killed?
 
-	kano_notifications_t *plugin_data = (kano_notifications_t *)p->priv;
+	kano_notifications_t *plugin_data = (kano_notifications_t *)data;
 
 	g_source_remove(plugin_data->watch_id);
 	g_io_channel_shutdown(plugin_data->fifo_channel, FALSE, NULL);
@@ -671,7 +673,7 @@ static void show_notification_window(kano_notifications_t *plugin_data,
 	gtk_window_set_gravity(GTK_WINDOW(win), GDK_GRAVITY_SOUTH_EAST);
 	gtk_window_move(GTK_WINDOW(win),
 		gdk_screen_width() - win_width - WINDOW_MARGIN_RIGHT,
-		gdk_screen_height() - win_height - panel->height
+		gdk_screen_height() - win_height - plugin_data->panel_height
 		- WINDOW_MARGIN_BOTTOM);
 
 	GtkStyle *style;
@@ -944,48 +946,18 @@ static gboolean io_watch_cb(GIOChannel *source, GIOCondition cond, gpointer data
 
 			g_mutex_unlock(&(plugin_data->lock));
 		}
-
 	}
 
 	return TRUE;
 }
 
-static void plugin_configure(Plugin *p, GtkWindow *parent)
-{
-  // doing nothing here, so make sure neither of the parameters
-  // emits a warning at compilation
-  (void)p;
-  (void)parent;
-}
-
-static void plugin_save_configuration(Plugin *p, FILE *fp)
-{
-  // doing nothing here, so make sure neither of the parameters
-  // emits a warning at compilation
-  (void)p;
-  (void)fp;
-}
+FM_DEFINE_MODULE(lxpanel_gtk, kano_notifications)
 
 /* Plugin descriptor. */
-PluginClass kano_notifications_plugin_class = {
-	// this is a #define taking care of the size/version variables
-	PLUGINCLASS_VERSIONING,
-
-	// type of this plugin
-	type : "kano_notifications",
-	name : N_("Kano Notifications"),
-	version: "1.0",
-	description : N_("Displays various types of alerts and notifications."),
-
-	// we can have many running at the same time
-	one_per_system : TRUE,
-
-	// can't expand this plugin
-	expand_available : FALSE,
-
-	// assigning our functions to provided pointers.
-	constructor : plugin_constructor,
-	destructor  : plugin_destructor,
-	config : plugin_configure,
-	save : plugin_save_configuration
+LXPanelPluginInit fm_module_init_lxpanel_gtk = {
+    .name = N_("Kano Notifications"),
+    .description = N_("Displays various types of alerts and notifications."),
+    .new_instance = plugin_constructor,
+    .one_per_system = TRUE,
+    .expand_available = FALSE
 };
