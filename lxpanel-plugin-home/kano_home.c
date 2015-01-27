@@ -6,12 +6,7 @@
 *
 */
 
-#include <gtk/gtk.h>
-#include <gdk/gdk.h>
 #include <glib/gi18n.h>
-#include <gdk-pixbuf/gdk-pixbuf.h>
-#include <gio/gio.h>
-
 #include <lxpanel/plugin.h>
 
 #define WNCK_I_KNOW_THIS_IS_UNSTABLE
@@ -29,25 +24,26 @@
 static gboolean minimise_windows(GtkWidget *, GdkEventButton *);
 
 
-static int plugin_constructor(Plugin *p, char **fp)
+static GtkWidget *plugin_constructor(LXPanel *panel, config_setting_t *settings)
 {
-    (void)fp;
+    (void)panel;
+    (void)settings;
 
     /* need to create a widget to show */
-    p->pwid = gtk_event_box_new();
+    GtkWidget *pwid = gtk_event_box_new();
 
     /* create an icon */
     GtkWidget *icon = gtk_image_new_from_file(ICON_FILE);
 
     /* set border width */
-    gtk_container_set_border_width(GTK_CONTAINER(p->pwid), 0);
+    gtk_container_set_border_width(GTK_CONTAINER(pwid), 0);
 
     /* add the label to the container */
-    gtk_container_add(GTK_CONTAINER(p->pwid), GTK_WIDGET(icon));
+    gtk_container_add(GTK_CONTAINER(pwid), GTK_WIDGET(icon));
 
     /* our widget doesn't have a window... */
-    gtk_widget_set_has_window(p->pwid, FALSE);
-    gtk_signal_connect(GTK_OBJECT(p->pwid), "button-press-event", GTK_SIGNAL_FUNC(minimise_windows), p);
+    gtk_widget_set_has_window(pwid, FALSE);
+    gtk_signal_connect(GTK_OBJECT(pwid), "button-press-event", GTK_SIGNAL_FUNC(minimise_windows), pwid);
 
     /* Set a tooltip to the icon to show when the mouse sits over the it */
     GtkTooltips *tooltips;
@@ -57,14 +53,9 @@ static int plugin_constructor(Plugin *p, char **fp)
     gtk_widget_set_sensitive(icon, TRUE);
 
     /* show our widget */
-    gtk_widget_show_all(p->pwid);
+    gtk_widget_show_all(pwid);
 
-    return 1;
-}
-
-static void plugin_destructor(Plugin *p)
-{
-    (void)p;
+    return pwid;
 }
 
 static gboolean minimise_windows(GtkWidget *widget, GdkEventButton *event)
@@ -88,42 +79,12 @@ static gboolean minimise_windows(GtkWidget *widget, GdkEventButton *event)
     return TRUE;
 }
 
-static void plugin_configure(Plugin *p, GtkWindow *parent)
-{
-  // doing nothing here, so make sure neither of the parameters
-  // emits a warning at compilation
-  (void)p;
-  (void)parent;
-}
-
-static void plugin_save_configuration(Plugin *p, FILE *fp)
-{
-  // doing nothing here, so make sure neither of the parameters
-  // emits a warning at compilation
-  (void)p;
-  (void)fp;
-}
+FM_DEFINE_MODULE(lxpanel_gtk, kano_home)
 
 /* Plugin descriptor. */
-PluginClass kano_home_plugin_class = {
-    // this is a #define taking care of the size/version variables
-    PLUGINCLASS_VERSIONING,
-
-    // type of this plugin
-    type : "kano_home",
-    name : N_("Kano Home"),
-    version: "1.0",
-    description : N_("Minimise open windows."),
-
-    // we can have many running at the same time
-    one_per_system : FALSE,
-
-    // can't expand this plugin
-    expand_available : FALSE,
-
-    // assigning our functions to provided pointers.
-    constructor : plugin_constructor,
-    destructor  : plugin_destructor,
-    config : plugin_configure,
-    save : plugin_save_configuration
+LXPanelPluginInit fm_module_init_lxpanel_gtk = {
+    .name = N_("Kano Home"),
+    .description = N_("Minimise open windows."),
+    .new_instance = plugin_constructor,
+    .one_per_system = FALSE
 };

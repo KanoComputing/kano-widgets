@@ -5,8 +5,8 @@
 #
 
 CC=gcc
-CFLAGS=`pkg-config --cflags lxpanel gtk+-2.0` -I/usr/include/libfm -I/usr/include/libwnck-1.0
-LIBS=`pkg-config --libs lxpanel gtk+-2.0` -lfm-gtk -lwnck-1
+CFLAGS=`pkg-config --cflags lxpanel gtk+-2.0` -I/usr/include/libwnck-1.0
+LIBS=`pkg-config --libs lxpanel gtk+-2.0` -lwnck-1
 SRC=kano_home.c
 BIN=kano_home.so
 INSTALL_PATH=/usr/lib/arm-linux-gnueabihf/lxpanel/plugins/

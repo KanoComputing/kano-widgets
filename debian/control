@@ -4,10 +4,11 @@ Section: admin
 Priority: optional
 Standards-Version: 3.9.4
 Build-Depends: debhelper (>= 9), build-essential, pkg-config, libgtk2.0-dev,
-               libmenu-cache1-dev, lxpanel, libfm-gtk1, libfm-dev, libwnck-dev, libkdesk-dev
+               lxpanel (>= 0.7.0), libfm-dev, libwnck-dev,
+               libkdesk-dev (>= 1.1-9)
 
 Package: kano-widgets
 Architecture: all
 Depends: ${shlibs:Depends}, ${misc:Depends}, kano-profile (>= 1.2-2),
-         kano-sound-files, libkdesk-dev (>= 1.1-9), kano-toolset
+         kano-sound-files, libkdesk-dev (>= 1.1-9), kano-toolset, lxpanel
 Description: Collection of Kano lxpanel widgets
