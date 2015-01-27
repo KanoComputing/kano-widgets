@@ -84,8 +84,6 @@
 #define TITLE_COLOUR "#323232"
 #define BYLINE_COLOUR "#6e6e6e"
 
-Panel *panel;
-
 struct notification_conf {
 	gboolean enabled;
 	gboolean allow_world_notifications;
