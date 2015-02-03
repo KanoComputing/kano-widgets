@@ -6,6 +6,10 @@
  *
  */
 
+/* TODO && FIXME: The next time we're adding things here it needs to be
+ *                split into several modules.
+ */
+
 #include <gtk/gtk.h>
 #include <gdk/gdk.h>
 #include <glib/gi18n.h>
@@ -29,6 +33,8 @@
 #include <kdesk-hourglass.h>
 
 #include "parson.h"
+
+#define UPDATE_STATUS_FILE "/var/cache/kano-updater/status"
 
 #define FIFO_FILENAME ".kano-notifications.fifo"
 #define CONF_FILENAME ".kano-notifications.conf"
@@ -59,6 +65,8 @@
 #define __STR_HELPER(x) #x
 #define STR(x) __STR_HELPER(x)
 
+#define MAX_QUEUE_LEN 50
+
 #define LEVEL_IMG_BASE_PATH ("/usr/share/kano-profile/media/images/%s/" \
 	STR(NOTIFICATION_IMAGE_WIDTH)  "x" STR(NOTIFICATION_IMAGE_HEIGHT) \
 		"/Level-%s.png")
@@ -66,8 +74,8 @@
 	STR(NOTIFICATION_IMAGE_WIDTH) "x" STR(NOTIFICATION_IMAGE_HEIGHT) \
 	"/%s/%s_levelup.png")
 #define WORLD_IMG_BASE_PATH ("/usr/share/kano-profile/media/images/notification/" \
-    STR(NOTIFICATION_IMAGE_WIDTH)  "x" STR(NOTIFICATION_IMAGE_HEIGHT) \
-        "/notification.png")
+	STR(NOTIFICATION_IMAGE_WIDTH)  "x" STR(NOTIFICATION_IMAGE_HEIGHT) \
+	"/notification.png")
 
 #define LEVEL_TITLE "New level!"
 #define LEVEL_BYLINE "You're now Level %s"
@@ -84,11 +92,42 @@
 #define TITLE_COLOUR "#323232"
 #define BYLINE_COLOUR "#6e6e6e"
 
+#define ON_TIME 6000
+
+#define REGISTER_REMINDER \
+	"{" \
+		"\"title\": \"Kano World\", " \
+		"\"byline\": \"Remember to register\", " \
+		"\"image\": \"/usr/share/kano-profile/media/images/notification/280x170/register.png\", " \
+		"\"sound\": null, " \
+		"\"command\": \"kano-login 3\" " \
+	"}"
+
+#define UPDATE_REMINDER \
+	"{" \
+		"\"title\": \"Updates Available\"," \
+		"\"byline\": \"Click here to update your Kano\"," \
+		"\"image\": \"/usr/share/kano-profile/media/images/notification/280x170/update.png\"," \
+		"\"sound\": null," \
+		"\"command\": \"sudo check-for-updates -d\"" \
+	"}"
+
+#define KANO_PROFILE_CMD "kano-profile"
+#define KANO_LOGIN_CMD "kano-login 3"
+
+/*
+ * The structure used by the load_conf() and save_conf() functions to
+ * hold the configuration of the widget.
+ */
 struct notification_conf {
 	gboolean enabled;
 	gboolean allow_world_notifications;
 };
 
+/*
+ * The main data structure of the plugin. Kept as plugin_data in
+ * the lxpanel's Plugin object.
+ */
 typedef struct {
 	int fifo_fd;
 	GIOChannel *fifo_channel;
@@ -100,6 +139,7 @@ typedef struct {
 
 	GMutex lock;
 	GList *queue;
+	gboolean queue_has_reminders;
 
 	GtkWidget *window;
 	guint window_timeout;
@@ -109,6 +149,9 @@ typedef struct {
 	struct notification_conf conf;
 } kano_notifications_t;
 
+/*
+ * Represents a single notification to be displayed.
+ */
 typedef struct {
 	gchar *image_path;
 	gchar *title;
@@ -134,47 +177,59 @@ static void launch_cmd(const char *cmd, gboolean hourglass);
 gchar *get_fifo_filename(void);
 gchar *get_conf_filename(void);
 
-
+/*
+ * Resolve the path to the pipe file in the user's $HOME directory.
+ *
+ * WARNING: You're expected to g_free() the string returned.
+ */
 gchar *get_fifo_filename(void)
 {
-    struct passwd *pw = getpwuid(getuid());
-    const char *homedir = pw->pw_dir;
+	struct passwd *pw = getpwuid(getuid());
+	const char *homedir = pw->pw_dir;
 
-    // You are responsible for freeing the returned char buffer
-    int buff_len=strlen(homedir) + strlen(FIFO_FILENAME) + sizeof(char) * 2;
-    gchar *fifo_filename = g_new0(gchar, buff_len);
-    if (!fifo_filename) {
-        return NULL;
-    }
-    else {
-        g_strlcpy(fifo_filename, homedir, buff_len);
-        g_strlcat(fifo_filename, "/", buff_len);
-        g_strlcat(fifo_filename, FIFO_FILENAME, buff_len);
-        return (fifo_filename);
-    }
+	/* You are responsible for freeing the returned char buffer */
+	int buff_len=strlen(homedir) + strlen(FIFO_FILENAME) + sizeof(char) * 2;
+	gchar *fifo_filename = g_new0(gchar, buff_len);
+	if (!fifo_filename) {
+		return NULL;
+	}
+	else {
+		g_strlcpy(fifo_filename, homedir, buff_len);
+		g_strlcat(fifo_filename, "/", buff_len);
+		g_strlcat(fifo_filename, FIFO_FILENAME, buff_len);
+		return (fifo_filename);
+	}
 }
 
 
+/*
+ * Resolve the path to the config file in the user's $HOME directory.
+ *
+ * WARNING: You're expected to g_free() the string returned.
+ */
 gchar *get_conf_filename(void)
 {
-    struct passwd *pw = getpwuid(getuid());
-    const char *homedir = pw->pw_dir;
+	struct passwd *pw = getpwuid(getuid());
+	const char *homedir = pw->pw_dir;
 
-    // You are responsible for freeing the returned char buffer
-    int buff_len=strlen(homedir) + strlen(CONF_FILENAME) + sizeof(char) * 2;
-    gchar *conf_filename = g_new0(gchar, buff_len);
-    if (!conf_filename) {
-        return NULL;
-    }
-    else {
-        g_strlcpy(conf_filename, homedir, buff_len);
-        g_strlcat(conf_filename, "/", buff_len);
-        g_strlcat(conf_filename, CONF_FILENAME, buff_len);
-        return (conf_filename);
-    }
+	/* You are responsible for freeing the returned char buffer */
+	int buff_len=strlen(homedir) + strlen(CONF_FILENAME) + sizeof(char) * 2;
+	gchar *conf_filename = g_new0(gchar, buff_len);
+	if (!conf_filename) {
+		return NULL;
+	}
+	else {
+		g_strlcpy(conf_filename, homedir, buff_len);
+		g_strlcat(conf_filename, "/", buff_len);
+		g_strlcat(conf_filename, CONF_FILENAME, buff_len);
+		return (conf_filename);
+	}
 }
 
 
+/*
+ * Save the configuration into the current user's $HOME.
+ */
 int save_conf(struct notification_conf *conf)
 {
 	int status;
@@ -200,6 +255,9 @@ int save_conf(struct notification_conf *conf)
 }
 
 
+/*
+ * Load the configuration from the current user's $HOME.
+ */
 void load_conf(struct notification_conf *conf)
 {
 	gchar *conf_file = get_conf_filename();
@@ -227,7 +285,7 @@ void load_conf(struct notification_conf *conf)
 		json_value_free(root_value);
 	}
 
-	/* There's no or malformed configuration, so create a default one. */
+	/* There's no or broken configuration, so create a default one. */
 	conf->enabled = TRUE;
 	conf->allow_world_notifications = TRUE;
 	save_conf(conf);
@@ -236,6 +294,10 @@ void load_conf(struct notification_conf *conf)
 }
 
 
+/*
+ * This is the entry point of the plugin in LXPanel. It's meant to
+ * initialise the plugin_data structure.
+ */
 static GtkWidget *plugin_constructor(LXPanel *panel, config_setting_t *settings)
 {
 	/* allocate our private structure instance */
@@ -248,40 +310,43 @@ static GtkWidget *plugin_constructor(LXPanel *panel, config_setting_t *settings)
 
 	plugin_data->window = NULL;
 	plugin_data->queue = NULL;
+	plugin_data->queue_has_reminders = FALSE;
 
-	plugin_data->paused = FALSE; // TODO load from the configuration
+	plugin_data->paused = FALSE; /* TODO load from the configuration */
 
 	g_mutex_init(&(plugin_data->lock));
 
-        // Create the pipe file
-        gchar *pipe_filename=get_fifo_filename();
-        if (pipe_filename) {
+	/* Create the pipe file */
+	gchar *pipe_filename=get_fifo_filename();
+	if (pipe_filename) {
+		/* remove previous instance of the pipe */
+		unlink(pipe_filename);
 
-            // remove previous instance of the pipe
-            unlink(pipe_filename);
+		/* Set access mode as wide as possible
+		   (this depends on current umask) */
+		if (mkfifo(pipe_filename, S_IWUSR | S_IRUSR | S_IRGRP |
+					  S_IWGRP | S_IROTH) < 0) {
+			perror("mkfifo");
+			return 0;
+		} else {
+			/* Enforce write mode to group and others */
+			chmod (pipe_filename, 0666);
+		}
 
-            // Set access mode as wide as possible (this depends on current umask)
-            if (mkfifo(pipe_filename, S_IWUSR | S_IRUSR | S_IRGRP | S_IWGRP | S_IROTH) < 0) {
-		perror("mkfifo");
-		return 0;
-            }
-            else {
-                // Enforce write mode to group and others
-                chmod (pipe_filename, 0666);
-            }
+		plugin_data->fifo_fd = open(pipe_filename, O_RDWR | O_NONBLOCK,
+					    0);
+		if (plugin_data->fifo_fd < 0) {
+			perror("open");
+			return 0;
+		}
 
-            plugin_data->fifo_fd = open(pipe_filename, O_RDWR | O_NONBLOCK, 0);
-            if (plugin_data->fifo_fd < 0) {
-		perror("open");
-		return 0;
-            }
-
-            plugin_data->fifo_channel = g_io_channel_unix_new(plugin_data->fifo_fd);
-            plugin_data->watch_id = g_io_add_watch(plugin_data->fifo_channel,
-                                                   G_IO_IN, (GIOFunc)io_watch_cb,
-						   (gpointer)plugin_data);
-            g_free(pipe_filename);
-        }
+		/* Start watching the pipe for input. */
+		plugin_data->fifo_channel = g_io_channel_unix_new(plugin_data->fifo_fd);
+		plugin_data->watch_id = g_io_add_watch(plugin_data->fifo_channel,
+						       G_IO_IN, (GIOFunc)io_watch_cb,
+						       (gpointer)plugin_data);
+		g_free(pipe_filename);
+	}
 
 	load_conf(&(plugin_data->conf));
 
@@ -293,9 +358,13 @@ static GtkWidget *plugin_constructor(LXPanel *panel, config_setting_t *settings)
 	return pwid;
 }
 
+/*
+ * The oposite of plugin_constructor, to free up resources.
+ */
 static void plugin_destructor(gpointer data)
 {
-        // FIXME: We are not being called during destructor. lxpanel is agressively killed?
+	/* FIXME: We are not being called during destructor.
+	   lxpanel is agressively killed? */
 
 	kano_notifications_t *plugin_data = (kano_notifications_t *)data;
 
@@ -304,11 +373,11 @@ static void plugin_destructor(gpointer data)
 	g_io_channel_unref(plugin_data->fifo_channel);
 	close(plugin_data->fifo_fd);
 
-        gchar *pipe_filename=get_fifo_filename();
-        if (pipe_filename) {
-            unlink(pipe_filename);
-            g_free(pipe_filename);
-        }
+	gchar *pipe_filename=get_fifo_filename();
+	if (pipe_filename) {
+		unlink(pipe_filename);
+		g_free(pipe_filename);
+	}
 
 	close_notification(plugin_data);
 
@@ -317,6 +386,9 @@ static void plugin_destructor(gpointer data)
 	g_free(plugin_data);
 }
 
+/*
+ * A shortcut to freeing the whole notification_info_t function.
+ */
 static void free_notification(notification_info_t *data)
 {
 	g_free(data->image_path);
@@ -328,6 +400,94 @@ static void free_notification(notification_info_t *data)
 	g_free(data);
 }
 
+
+/*
+ * Check whether the user is registered in kano world
+ *
+ * This will open the profile json file and see whether it has the
+ * 'kanoworld_id' key.
+ */
+static gboolean is_user_registered()
+{
+	const gchar *pf_tmp = "/home/%s/.kanoprofile/profile/profile.json";
+	size_t bufsize = strlen(pf_tmp);
+
+	/* Get username for the homedir path */
+	uid_t uid = geteuid();
+	struct passwd *pw = getpwuid(uid);
+	if (!pw)
+		/* We assume the user is not logged in when we cannot
+		   even get the username. */
+		return FALSE;
+
+	/* Put the path together */
+	bufsize = strlen(pf_tmp) + strlen(pw->pw_name) + 2;
+	gchar *profile = g_new0(gchar, bufsize);
+	g_sprintf(profile, pf_tmp, pw->pw_name);
+
+	/* Open the JSON */
+	JSON_Value *root_value = NULL;
+	JSON_Object *root = NULL;
+	const gchar *id = NULL;
+
+	root_value = json_parse_file(profile);
+	g_free(profile);
+
+	/* We expect dict as the root value of the JSON.
+	   The assumption is that the user is not logged in if this
+	   fails. */
+	if (json_value_get_type(root_value) != JSONObject) {
+		json_value_free(root_value);
+		return FALSE;
+	}
+
+	root = json_value_get_object(root_value);
+	id = json_object_get_string(root, "kanoworld_id");
+	json_value_free(root_value);
+	return id != NULL;
+}
+
+/*
+ * Check whether there's internet available.
+ */
+static gboolean is_internet()
+{
+	return system("is_internet") == 0;
+}
+
+/*
+ * Is update available?
+ */
+static gboolean is_update_available()
+{
+	FILE *fp;
+	gchar *line = NULL;
+	size_t len = 0;
+	ssize_t read;
+	int value = 0;
+
+	fp = fopen(UPDATE_STATUS_FILE, "r");
+	if (fp == NULL)
+		/* In case the status file isn't there, we say there
+		   are no updates available. */
+		return FALSE;
+
+	gchar *key = "update_available=";
+	while ((read = getline(&line, &len, fp)) != -1) {
+		if (strncmp(line, key, strlen(key)) == 0) {
+			value = atoi(line + strlen(key));
+			break;
+		}
+	}
+
+	return value == 1;
+}
+
+
+/*
+ * Parse the byline from the JSON file that represents the award
+ * (badges, environments, avatars)
+ */
 static void get_award_byline(gchar *json_file, gchar *key,
 			     notification_info_t *notification)
 {
@@ -362,6 +522,36 @@ static void get_award_byline(gchar *json_file, gchar *key,
 	json_value_free(root_value);
 }
 
+
+/*
+ * Determine the appropriate command for an award notification based
+ * on whether the user is logged in to kano world or not.
+ */
+static void set_award_command(notification_info_t *notification)
+{
+	ssize_t len;
+	if (is_user_registered()) {
+		len = strlen(KANO_PROFILE_CMD);
+		notification->command = g_new0(gchar, len + 2);
+		g_strlcpy(notification->command, KANO_PROFILE_CMD, len);
+	} else {
+		len = strlen(KANO_LOGIN_CMD);
+		notification->command = g_new0(gchar, len + 2);
+		g_strlcpy(notification->command, KANO_LOGIN_CMD, len + 2);
+	}
+}
+
+
+/*
+ * Prepare a notification_t instance to be displayed based on an id
+ * for it. The format of the id is the following:
+ *
+ *  - badges:application:feedbacker
+ *  - avatars:conductor:conductor_1
+ *
+ * TODO: Now that the widget supports JSON notifications, this logic
+ *       could be moved outside of the widget itself.
+ */
 static notification_info_t *get_notification_by_id(gchar *id)
 {
 	gchar **tokens = g_strsplit(id, ":", 0);
@@ -399,7 +589,8 @@ static notification_info_t *get_notification_by_id(gchar *id)
 		bufsize += strlen(LEVEL_IMG_BASE_PATH);
 		bufsize += strlen(tokens[0]) + strlen(tokens[1]);
 		data->image_path = g_new0(gchar, bufsize+1);
-		g_sprintf(data->image_path, LEVEL_IMG_BASE_PATH, tokens[0], tokens[1]);
+		g_sprintf(data->image_path, LEVEL_IMG_BASE_PATH,
+			  tokens[0], tokens[1]);
 
 		/* Allocate and set the sound */
 		bufsize = strlen(CHEER_SOUND);
@@ -484,18 +675,23 @@ static notification_info_t *get_notification_by_id(gchar *id)
 		return NULL;
 	}
 
+	set_award_command(data);
+
 	/* Allocate and set image_path */
 	if (g_strcmp0(tokens[0], "avatars") == 0) {
 		/* There's a path exception for avatars, handle it here. */
 		bufsize = strlen(AWARD_IMG_BASE_PATH);
 		bufsize += strlen(tokens[0]) + 2*strlen(tokens[1]);
 		data->image_path = g_new0(gchar, bufsize+1);
-		g_sprintf(data->image_path, AWARD_IMG_BASE_PATH, tokens[0], tokens[1], tokens[1]);
+		g_sprintf(data->image_path, AWARD_IMG_BASE_PATH,
+			  tokens[0], tokens[1], tokens[1]);
 	} else {
 		bufsize = strlen(AWARD_IMG_BASE_PATH);
-		bufsize += strlen(tokens[0]) + strlen(tokens[1]) + strlen(tokens[2]);
+		bufsize += strlen(tokens[0]) + strlen(tokens[1]) +
+				  strlen(tokens[2]);
 		data->image_path = g_new0(gchar, bufsize+1);
-		g_sprintf(data->image_path, AWARD_IMG_BASE_PATH, tokens[0], tokens[1], tokens[2]);
+		g_sprintf(data->image_path, AWARD_IMG_BASE_PATH,
+			  tokens[0], tokens[1], tokens[2]);
 	}
 
 	/* Allocate and set the sound */
@@ -507,6 +703,21 @@ static notification_info_t *get_notification_by_id(gchar *id)
 	return data;
 }
 
+/*
+ * Construct a notification from a JSON string.
+ *
+ * Example JSON data:
+ * {
+ *     "title": "Hello",
+ *     "byline": "How are you today?",
+ *     "imgae": "/path/to/a/picture.png",
+ *     "sound": "/path/to/a/wav-file.wav",
+ *     "command": "lxterminal",
+ *     "type": "normal",
+ * }
+ *
+ * All keys except the title and byline are optional.
+ */
 static notification_info_t *get_json_notification(gchar *json_data)
 {
 	JSON_Value *root_value = NULL;
@@ -576,6 +787,10 @@ static notification_info_t *get_json_notification(gchar *json_data)
 	return data;
 }
 
+
+/*
+ * Destroy the notification and show the next one in the queue.
+ */
 static void hide_notification_window(kano_notifications_t *plugin_data)
 {
 	if (g_mutex_trylock(&(plugin_data->lock)) == TRUE) {
@@ -585,6 +800,9 @@ static void hide_notification_window(kano_notifications_t *plugin_data)
 	}
 }
 
+/*
+ * A callback for when the user clicks on the image.
+ */
 static gboolean eventbox_click_cb(GtkWidget *w, GdkEventButton *event,
 				  kano_notifications_t *plugin_data)
 {
@@ -592,6 +810,9 @@ static gboolean eventbox_click_cb(GtkWidget *w, GdkEventButton *event,
 	return TRUE;
 }
 
+/*
+ * Set the hover cursor of the launch button to HAND1
+ */
 static gboolean button_realize_cb(GtkWidget *widget, void *data)
 {
 	GdkCursor *cursor;
@@ -603,6 +824,10 @@ static gboolean button_realize_cb(GtkWidget *widget, void *data)
 	return TRUE;
 }
 
+
+/*
+ * The command button's hover in callback. Changes the colour of it.
+ */
 static gboolean button_enter_cb(GtkWidget *widget, GdkEvent *event, void *data)
 {
 	GdkColor button_bg;
@@ -611,6 +836,10 @@ static gboolean button_enter_cb(GtkWidget *widget, GdkEvent *event, void *data)
 	return TRUE;
 }
 
+
+/*
+ * The command button's hover out callback. Changes the colour of it.
+ */
 static gboolean button_leave_cb(GtkWidget *widget, GdkEvent *event, void *data)
 {
 	GdkColor button_bg;
@@ -619,36 +848,56 @@ static gboolean button_leave_cb(GtkWidget *widget, GdkEvent *event, void *data)
 	return TRUE;
 }
 
+
+/*
+ * Launch the command that is associated with the notification.
+ */
 static gboolean button_click_cb(GtkWidget *w, GdkEventButton *event,
 				gtk_user_data_t *user_data)
 {
-    // User clicked on this world notification command. Save this event in Kano Tracker.
-    // It will be audited in the form: "world-notification <byline>" to keep a counter.
-    char *tracker_cmd_prolog="kano-profile-cli increment_app_runtime 'world-notification ";
-    int tracker_cmd_len=strlen(tracker_cmd_prolog) + strlen(user_data->notification->byline) + (sizeof(gchar) * 4);
-    gchar *tracker_cmd=g_new0(gchar, tracker_cmd_len);
-    if (tracker_cmd) {
-        g_strlcpy(tracker_cmd, tracker_cmd_prolog, tracker_cmd_len);
-        g_strlcat(tracker_cmd, user_data->notification->byline, tracker_cmd_len);
-        g_strlcat(tracker_cmd, "' 0", tracker_cmd_len);
-    }
+	/* User clicked on this world notification command.
+	   Save this event in Kano Tracker. It will be audited
+	   in the form: "world-notification <byline>" to keep a counter. */
+	char *tracker_cmd_prolog = "kano-profile-cli increment_app_runtime "
+				   "'world-notification ";
+	int tracker_cmd_len = strlen(tracker_cmd_prolog) +
+				     strlen(user_data->notification->byline) +
+				     (sizeof(gchar) * 4);
+	gchar *tracker_cmd=g_new0(gchar, tracker_cmd_len);
 
-    // Launch the application pointed to by the "command" notification field
-    launch_cmd(user_data->notification->command, TRUE);
-    hide_notification_window(user_data->plugin_data);
-    g_free(user_data);
+	if (tracker_cmd) {
+		g_strlcpy(tracker_cmd, tracker_cmd_prolog, tracker_cmd_len);
+		g_strlcat(tracker_cmd, user_data->notification->byline,
+			  tracker_cmd_len);
+		g_strlcat(tracker_cmd, "' 0", tracker_cmd_len);
+	}
 
-    // Notification tracking is done after processing the visual work, to avoid UIX delays
-    if (tracker_cmd) {
-        launch_cmd(tracker_cmd, FALSE);
-        g_free(tracker_cmd);
-    }
+	/* Launch the application pointed to by the "command"
+	   notification field */
+	launch_cmd(user_data->notification->command, TRUE);
+	hide_notification_window(user_data->plugin_data);
+	g_free(user_data);
 
-    return TRUE;
+	/* Notification tracking is done after processing the visual work,
+	   to avoid UIX delays */
+	if (tracker_cmd) {
+		launch_cmd(tracker_cmd, FALSE);
+		g_free(tracker_cmd);
+	}
+
+	return TRUE;
 }
 
+
+/*
+ * Constructs the notification window and display's it.
+ *
+ * This function also sets up a timer that will destroy the window after
+ * a set period of time. It's expected that no notification is being
+ * shown at the time of this function call.
+ */
 static void show_notification_window(kano_notifications_t *plugin_data,
-			      notification_info_t *notification)
+				     notification_info_t *notification)
 {
 	GtkWidget *win = gtk_window_new(GTK_WINDOW_POPUP);
 	plugin_data->window = win;
@@ -677,7 +926,7 @@ static void show_notification_window(kano_notifications_t *plugin_data,
 	GtkStyle *style;
 	GtkWidget *eventbox = gtk_event_box_new();
 	gtk_signal_connect(GTK_OBJECT(eventbox), "button-release-event",
-                     GTK_SIGNAL_FUNC(eventbox_click_cb), plugin_data);
+			   GTK_SIGNAL_FUNC(eventbox_click_cb), plugin_data);
 
 	GdkColor white;
 	gdk_color_parse("white", &white);
@@ -786,11 +1035,49 @@ static void show_notification_window(kano_notifications_t *plugin_data,
 		g_free(aplay_cmd);
 	}
 
-	plugin_data->window_timeout = g_timeout_add(6000,
+	plugin_data->window_timeout = g_timeout_add(ON_TIME,
 				(GSourceFunc) close_notification,
 				(gpointer) plugin_data);
 }
 
+
+/* This will queue and show the kano-world registration and updater reminders
+ * if needed.
+ *
+ * Expects plugin_data to be locked.
+ */
+static void show_reminders(kano_notifications_t *plugin_data)
+{
+	/* Both reminders only make sense when the user is online */
+	if (!is_internet())
+		return;
+
+	notification_info_t *notif = NULL;
+	if (!is_user_registered()) {
+		notif = get_json_notification(REGISTER_REMINDER);
+		plugin_data->queue = g_list_append(plugin_data->queue, notif);
+
+	}
+
+	if (is_update_available()) {
+		notif = get_json_notification(UPDATE_REMINDER);
+		plugin_data->queue = g_list_append(plugin_data->queue, notif);
+	}
+
+
+	if (g_list_length(plugin_data->queue) > 0) {
+		notif = g_list_nth_data(plugin_data->queue, 0);
+		show_notification_window(plugin_data, notif);
+	}
+}
+
+
+/*
+ * Destroy the notification window and free up the resources.
+ *
+ * If there was another notification queued up after this one, it will
+ * show it.
+ */
 static gboolean close_notification(kano_notifications_t *plugin_data)
 {
 	if (plugin_data->window != NULL) {
@@ -805,8 +1092,18 @@ static gboolean close_notification(kano_notifications_t *plugin_data)
 
 
 		if (g_list_length(plugin_data->queue) >= 1) {
+			/* Show the next one in the queue */
 			notification_info_t *notification = g_list_nth_data(plugin_data->queue, 0);
 			show_notification_window(plugin_data, notification);
+		} else {
+			/* If this was a las one in a row, queue additional
+			   reminders. */
+			if (!plugin_data->queue_has_reminders) {
+				plugin_data->queue_has_reminders = TRUE;
+				show_reminders(plugin_data);
+			} else {
+				plugin_data->queue_has_reminders = FALSE;
+			}
 		}
 
 		g_mutex_unlock(&(plugin_data->lock));
@@ -815,6 +1112,10 @@ static gboolean close_notification(kano_notifications_t *plugin_data)
 	return FALSE;
 }
 
+
+/*
+ * Non-blocking way of launching a command.
+ */
 static void launch_cmd(const char *cmd, gboolean hourglass)
 {
 	GAppInfo *appinfo = NULL;
@@ -841,6 +1142,17 @@ static void launch_cmd(const char *cmd, gboolean hourglass)
 	}
 }
 
+
+/*
+ * The main loop of this widget. It sets up an IO watch for the pipe and
+ * waits for incomming data. It will trigger different actions based on
+ * the data received.
+ *
+ * WARNING: I've seen some deadlocks when doing too much within the
+ *          handler itself. If the action takes a long time, it's better
+ *          to schedule it for the GTK main loop to execute outside of
+ *          this code path.
+ */
 static gboolean io_watch_cb(GIOChannel *source, GIOCondition cond, gpointer data)
 {
 	kano_notifications_t *plugin_data = (kano_notifications_t *)data;
@@ -851,6 +1163,7 @@ static gboolean io_watch_cb(GIOChannel *source, GIOCondition cond, gpointer data
 
 	status = g_io_channel_read_line(source, &line, &len, &tpos, NULL);
 	if (status == G_IO_STATUS_NORMAL) {
+		/* Removes the newline character at the and of the line */
 		line[tpos] = '\0';
 
 		/* This has to come before the enabled check. */
@@ -929,9 +1242,12 @@ static gboolean io_watch_cb(GIOChannel *source, GIOCondition cond, gpointer data
 			g_mutex_lock(&(plugin_data->lock));
 
 			/* Don't queue world notifications in case they are
-			   being filtered. */
-			if (data->type && g_strcmp0(data->type, "world") == 0 &&
-			    !plugin_data->conf.allow_world_notifications) {
+			   being filtered. This also ignores any incomming
+			   notifications beyond the maximum limit set. */
+			if ((data->type && g_strcmp0(data->type, "world") == 0 &&
+			    !plugin_data->conf.allow_world_notifications) ||
+			    g_list_length(plugin_data->queue) >=
+			    MAX_QUEUE_LEN) {
 				g_mutex_unlock(&(plugin_data->lock));
 				return TRUE;
 			}
