@@ -7,7 +7,7 @@
 CC=gcc
 CFLAGS=`pkg-config --cflags lxpanel gtk+-2.0`
 LIBS=`pkg-config --libs lxpanel gtk+-2.0`-lkdesk-hourglass
-SRC=kano_notifications.c parson.c
+SRC=kano_notifications.c parson/parson.c
 BIN=kano_notifications.so
 INSTALL_PATH=/usr/lib/`dpkg-architecture -qDEB_HOST_MULTIARCH`/lxpanel/plugins/
 
@@ -17,5 +17,7 @@ install:
 	install -p -m 0644 $(BIN) $(INSTALL_PATH)
 
 $(BIN): $(SRC)
+	cd .. && git submodule init
+	cd .. && git submodule update
 	$(CC) -Wall $(CFLAGS) -shared -fPIC $(SRC) -o $(BIN) $(LIBS)
 

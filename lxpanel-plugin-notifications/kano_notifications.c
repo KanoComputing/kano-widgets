@@ -32,7 +32,7 @@
 
 #include <kdesk-hourglass.h>
 
-#include "parson.h"
+#include "parson/parson.h"
 
 #define UPDATE_STATUS_FILE "/var/cache/kano-updater/status"
 
@@ -114,6 +114,9 @@
 
 #define KANO_PROFILE_CMD "kano-profile"
 #define KANO_LOGIN_CMD "kano-login 3"
+
+#define IS_TYPE(notification, notif_type) \
+	(notification->type && g_strcmp0(notification->type, notif_type) == 0)
 
 /*
  * The structure used by the load_conf() and save_conf() functions to
@@ -902,27 +905,6 @@ static void show_notification_window(kano_notifications_t *plugin_data,
 	GtkWidget *win = gtk_window_new(GTK_WINDOW_POPUP);
 	plugin_data->window = win;
 
-	int win_width, win_height;
-	if (notification->image_path)
-	{
-		win_width = NOTIFICATION_IMAGE_WIDTH;
-		win_height = NOTIFICATION_IMAGE_HEIGHT + PANEL_HEIGHT;
-	} else {
-		win_width = PANEL_WIDTH;
-		win_height = PANEL_HEIGHT;
-	}
-
-	gtk_window_set_default_size(GTK_WINDOW(win), win_width, win_height);
-	gtk_window_set_position(GTK_WINDOW(win), GTK_WIN_POS_CENTER);
-
-	/* TODO Positioning doesn't take into account the position of the
-	   panel itself. */
-	gtk_window_set_gravity(GTK_WINDOW(win), GDK_GRAVITY_SOUTH_EAST);
-	gtk_window_move(GTK_WINDOW(win),
-		gdk_screen_width() - win_width - WINDOW_MARGIN_RIGHT,
-		gdk_screen_height() - win_height - plugin_data->panel_height
-		- WINDOW_MARGIN_BOTTOM);
-
 	GtkStyle *style;
 	GtkWidget *eventbox = gtk_event_box_new();
 	gtk_signal_connect(GTK_OBJECT(eventbox), "button-release-event",
@@ -935,7 +917,7 @@ static void show_notification_window(kano_notifications_t *plugin_data,
 	GtkWidget *box = gtk_vbox_new(FALSE, 0);
 	gtk_container_add(GTK_CONTAINER(eventbox), GTK_WIDGET(box));
 
-	if (notification->image_path) {
+	if (!IS_TYPE(notification, "small") && notification->image_path) {
 		GtkWidget *image = gtk_image_new_from_file(notification->image_path);
 		gtk_widget_add_events(image, GDK_BUTTON_RELEASE_MASK);
 		gtk_box_pack_start(GTK_BOX(box), GTK_WIDGET(image),
@@ -947,14 +929,19 @@ static void show_notification_window(kano_notifications_t *plugin_data,
 	GtkWidget *labels = gtk_vbox_new(FALSE, 0);
 
 	GtkWidget *title = gtk_label_new(NULL);
-	gtk_widget_set_size_request(title, LABELS_WIDTH, -1);
+
+	/* Don't limit the size of the label in case it's the small one
+	   or it doesn't have an image. */
+	if (!IS_TYPE(notification, "small") && notification->image_path)
+		gtk_widget_set_size_request(title, LABELS_WIDTH, -1);
+
 	gtk_label_set_text(GTK_LABEL(title), notification->title);
 	gtk_label_set_justify(GTK_LABEL(title), GTK_JUSTIFY_LEFT);
 	gtk_label_set_line_wrap(GTK_LABEL(title), TRUE);
 	gtk_label_set_line_wrap_mode(GTK_LABEL(title), PANGO_WRAP_WORD);
 
 	style = gtk_widget_get_style(title);
-	pango_font_description_set_size(style->font_desc, 18*PANGO_SCALE);
+	pango_font_description_set_size(style->font_desc, 15*PANGO_SCALE);
 	pango_font_description_set_weight(style->font_desc, PANGO_WEIGHT_BOLD);
 	gtk_widget_modify_font(title, style->font_desc);
 
@@ -963,14 +950,19 @@ static void show_notification_window(kano_notifications_t *plugin_data,
 	gtk_widget_modify_fg(title, GTK_STATE_NORMAL, &title_colour);
 
 	GtkWidget *title_align = gtk_alignment_new(0,0,0,0);
-	gtk_alignment_set_padding(GTK_ALIGNMENT(title_align), 20, 0, 20, 0);
+	gtk_alignment_set_padding(GTK_ALIGNMENT(title_align), 20, 0, 20, 20);
 	gtk_container_add(GTK_CONTAINER(title_align), title);
 	gtk_box_pack_start(GTK_BOX(labels), GTK_WIDGET(title_align),
 			   FALSE, FALSE, 0);
 
 	GtkWidget *byline = gtk_label_new(NULL);
 	gtk_label_set_text(GTK_LABEL(byline), notification->byline);
-	gtk_widget_set_size_request(byline, LABELS_WIDTH, -1);
+
+	/* Don't limit the size of the label in case it's the small one
+	   or it doesn't have an image. */
+	if (!IS_TYPE(notification, "small") && notification->image_path)
+		gtk_widget_set_size_request(byline, LABELS_WIDTH, -1);
+
 	gtk_label_set_justify(GTK_LABEL(byline), GTK_JUSTIFY_LEFT);
 	gtk_label_set_line_wrap(GTK_LABEL(byline), TRUE);
 	gtk_label_set_line_wrap_mode(GTK_LABEL(byline), PANGO_WRAP_WORD);
@@ -985,12 +977,24 @@ static void show_notification_window(kano_notifications_t *plugin_data,
 	gtk_widget_modify_fg(byline, GTK_STATE_NORMAL, &byline_colour);
 
 	GtkWidget *byline_align = gtk_alignment_new(0,0,0,0);
-	gtk_alignment_set_padding(GTK_ALIGNMENT(byline_align), 5, 20, 20, 0);
+	gtk_alignment_set_padding(GTK_ALIGNMENT(byline_align), 5, 20, 20, 20);
 	gtk_container_add(GTK_CONTAINER(byline_align), byline);
 	gtk_box_pack_start(GTK_BOX(labels), GTK_WIDGET(byline_align),
 			   FALSE, FALSE, 0);
 
 	GtkWidget *hbox = gtk_hbox_new(FALSE, 0);
+
+	if (IS_TYPE(notification, "small") && notification->image_path) {
+		GtkWidget *small_image = gtk_image_new_from_file(notification->image_path);
+		gtk_widget_add_events(small_image, GDK_BUTTON_RELEASE_MASK);
+
+		GtkWidget *small_image_align = gtk_alignment_new(0,0,0,0);
+		gtk_alignment_set_padding(GTK_ALIGNMENT(small_image_align), 20, 0, 10, 0);
+		gtk_container_add(GTK_CONTAINER(small_image_align), small_image);
+
+		gtk_box_pack_start(GTK_BOX(hbox), GTK_WIDGET(small_image_align),
+				   FALSE, FALSE, 0);
+	}
 
 	gtk_box_pack_start(GTK_BOX(hbox), GTK_WIDGET(labels),
 			   TRUE, TRUE, 0);
@@ -1025,6 +1029,16 @@ static void show_notification_window(kano_notifications_t *plugin_data,
 			   TRUE, TRUE, 0);
 
 	gtk_widget_show_all(win);
+
+	/* TODO Positioning doesn't take into account the position of the
+	   panel itself. */
+	GdkWindow *gdk_win = gtk_widget_get_window(GTK_WIDGET(win));
+	int win_pos_x = gdk_screen_width() - gdk_window_get_width(gdk_win) -
+			WINDOW_MARGIN_RIGHT,
+	    win_pos_y = gdk_screen_height() - gdk_window_get_height(gdk_win) -
+			plugin_data->panel_height - WINDOW_MARGIN_BOTTOM;
+	gtk_window_set_gravity(GTK_WINDOW(win), GDK_GRAVITY_SOUTH_EAST);
+	gtk_window_move(GTK_WINDOW(win), win_pos_x, win_pos_y);
 
 	/* Play the sound */
 	if (notification->sound) {
@@ -1244,7 +1258,7 @@ static gboolean io_watch_cb(GIOChannel *source, GIOCondition cond, gpointer data
 			/* Don't queue world notifications in case they are
 			   being filtered. This also ignores any incomming
 			   notifications beyond the maximum limit set. */
-			if ((data->type && g_strcmp0(data->type, "world") == 0 &&
+			if ((IS_TYPE(data, "world") &&
 			    !plugin_data->conf.allow_world_notifications) ||
 			    g_list_length(plugin_data->queue) >=
 			    MAX_QUEUE_LEN) {

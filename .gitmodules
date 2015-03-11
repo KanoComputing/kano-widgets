@@ -1,0 +1,3 @@
+[submodule "lxpanel-plugin-notifications/parson"]
+	path = lxpanel-plugin-notifications/parson
+	url = https://github.com/kgabis/parson.git
