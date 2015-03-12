@@ -11,13 +11,17 @@ SRC=kano_notifications.c parson/parson.c
 BIN=kano_notifications.so
 INSTALL_PATH=/usr/lib/`dpkg-architecture -qDEB_HOST_MULTIARCH`/lxpanel/plugins/
 
+.PHONY: init
+
 build: $(BIN)
 
-install:
-	install -p -m 0644 $(BIN) $(INSTALL_PATH)
-
-$(BIN): $(SRC)
+init:
 	cd .. && git submodule init
 	cd .. && git submodule update
+
+install: $(BIN)
+	install -p -m 0644 $(BIN) $(INSTALL_PATH)
+
+$(BIN): init $(SRC)
 	$(CC) -Wall $(CFLAGS) -shared -fPIC $(SRC) -o $(BIN) $(LIBS)
 

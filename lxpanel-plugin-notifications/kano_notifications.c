@@ -989,7 +989,7 @@ static void show_notification_window(kano_notifications_t *plugin_data,
 		gtk_widget_add_events(small_image, GDK_BUTTON_RELEASE_MASK);
 
 		GtkWidget *small_image_align = gtk_alignment_new(0,0,0,0);
-		gtk_alignment_set_padding(GTK_ALIGNMENT(small_image_align), 20, 0, 10, 0);
+		gtk_alignment_set_padding(GTK_ALIGNMENT(small_image_align), 15, 0, 10, 0);
 		gtk_container_add(GTK_CONTAINER(small_image_align), small_image);
 
 		gtk_box_pack_start(GTK_BOX(hbox), GTK_WIDGET(small_image_align),
