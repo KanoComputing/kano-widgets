@@ -1073,10 +1073,10 @@ static void show_reminders(kano_notifications_t *plugin_data)
 
 	}
 
-	if (is_update_available()) {
+	/*if (is_update_available()) {
 		notif = get_json_notification(UPDATE_REMINDER);
 		plugin_data->queue = g_list_append(plugin_data->queue, notif);
-	}
+	}*/
 
 
 	if (g_list_length(plugin_data->queue) > 0) {
