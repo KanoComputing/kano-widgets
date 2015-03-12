@@ -22,6 +22,6 @@ init:
 install: $(BIN)
 	install -p -m 0644 $(BIN) $(INSTALL_PATH)
 
-$(BIN): init $(SRC)
+$(BIN): $(SRC)
 	$(CC) -Wall $(CFLAGS) -shared -fPIC $(SRC) -o $(BIN) $(LIBS)
 
