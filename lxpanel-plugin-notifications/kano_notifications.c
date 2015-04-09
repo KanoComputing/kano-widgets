@@ -1049,9 +1049,9 @@ static void show_notification_window(kano_notifications_t *plugin_data,
 		g_free(aplay_cmd);
 	}
 
-	plugin_data->window_timeout = g_timeout_add(ON_TIME,
+	/*plugin_data->window_timeout = g_timeout_add(ON_TIME,
 				(GSourceFunc) close_notification,
-				(gpointer) plugin_data);
+				(gpointer) plugin_data);*/
 }
 
 
