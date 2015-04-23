@@ -92,7 +92,7 @@
 #define TITLE_COLOUR "#323232"
 #define BYLINE_COLOUR "#6e6e6e"
 
-#define ON_TIME 6000
+#define ON_TIME 10000
 
 #define REGISTER_REMINDER \
 	"{" \
