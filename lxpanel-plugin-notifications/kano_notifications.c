@@ -1034,8 +1034,7 @@ static void show_notification_window(kano_notifications_t *plugin_data,
 	/* TODO Positioning doesn't take into account the position of the
 	   panel itself. */
 	GdkWindow *gdk_win = gtk_widget_get_window(GTK_WIDGET(win));
-	int win_pos_x = gdk_screen_width() - gdk_window_get_width(gdk_win) -
-			WINDOW_MARGIN_RIGHT,
+	int win_pos_x = (gdk_screen_width() - gdk_window_get_width(gdk_win))/2,
 	    win_pos_y = gdk_screen_height() - gdk_window_get_height(gdk_win) -
 			plugin_data->panel_height - WINDOW_MARGIN_BOTTOM;
 	gtk_window_set_gravity(GTK_WINDOW(win), GDK_GRAVITY_SOUTH_EAST);
