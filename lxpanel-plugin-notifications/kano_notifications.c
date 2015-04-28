@@ -41,7 +41,7 @@
 
 #define ON_ICON_FILE "/usr/share/kano-widgets/icons/notifications-on.png"
 #define OFF_ICON_FILE "/usr/share/kano-widgets/icons/notifications-off.png"
-#define RIGHT_ARROW "/usr/share/kano-widgets/icons/arrow-right.png"
+#define X_BUTTON "/usr/share/kano-widgets/icons/x-button.png"
 
 #define CHEER_SOUND "/usr/share/kano-media/sounds/kano_level_up.wav"
 
@@ -806,7 +806,7 @@ static void hide_notification_window(kano_notifications_t *plugin_data)
 /*
  * A callback for when the user clicks on the image.
  */
-static gboolean eventbox_click_cb(GtkWidget *w, GdkEventButton *event,
+static gboolean button_click_cb(GtkWidget *w, GdkEventButton *event,
 				  kano_notifications_t *plugin_data)
 {
 	hide_notification_window(plugin_data);
@@ -855,7 +855,7 @@ static gboolean button_leave_cb(GtkWidget *widget, GdkEvent *event, void *data)
 /*
  * Launch the command that is associated with the notification.
  */
-static gboolean button_click_cb(GtkWidget *w, GdkEventButton *event,
+static gboolean eventbox_click_cb(GtkWidget *w, GdkEventButton *event,
 				gtk_user_data_t *user_data)
 {
 	/* User clicked on this world notification command.
@@ -907,8 +907,12 @@ static void show_notification_window(kano_notifications_t *plugin_data,
 
 	GtkStyle *style;
 	GtkWidget *eventbox = gtk_event_box_new();
+
+	gtk_user_data_t *user_data = g_new0(gtk_user_data_t, 1);
+	user_data->notification = notification;
+	user_data->plugin_data = plugin_data;
 	gtk_signal_connect(GTK_OBJECT(eventbox), "button-release-event",
-			   GTK_SIGNAL_FUNC(eventbox_click_cb), plugin_data);
+			   GTK_SIGNAL_FUNC(eventbox_click_cb), user_data);
 
 	GdkColor white;
 	gdk_color_parse("white", &white);
@@ -1003,7 +1007,7 @@ static void show_notification_window(kano_notifications_t *plugin_data,
 	if (notification->command && strlen(notification->command) > 0) {
 		GdkColor button_bg;
 		gdk_color_parse(BUTTON_COLOUR, &button_bg);
-		GtkWidget *arrow = gtk_image_new_from_file(RIGHT_ARROW);
+		GtkWidget *arrow = gtk_image_new_from_file(X_BUTTON);
 		GtkWidget *button = gtk_event_box_new();
 		gtk_widget_modify_bg(button, GTK_STATE_NORMAL, &button_bg);
 		gtk_container_add(GTK_CONTAINER(button), arrow);
@@ -1015,11 +1019,8 @@ static void show_notification_window(kano_notifications_t *plugin_data,
 		gtk_signal_connect(GTK_OBJECT(button), "leave-notify-event",
 			     GTK_SIGNAL_FUNC(button_leave_cb), NULL);
 
-		gtk_user_data_t *user_data = g_new0(gtk_user_data_t, 1);
-		user_data->notification = notification;
-		user_data->plugin_data = plugin_data;
 		gtk_signal_connect(GTK_OBJECT(button), "button-release-event",
-			     GTK_SIGNAL_FUNC(button_click_cb), user_data);
+			     GTK_SIGNAL_FUNC(button_click_cb), plugin_data);
 
 		gtk_box_pack_start(GTK_BOX(hbox), GTK_WIDGET(button),
 				   FALSE, FALSE, 0);
@@ -1033,8 +1034,7 @@ static void show_notification_window(kano_notifications_t *plugin_data,
 	/* TODO Positioning doesn't take into account the position of the
 	   panel itself. */
 	GdkWindow *gdk_win = gtk_widget_get_window(GTK_WIDGET(win));
-	int win_pos_x = gdk_screen_width() - gdk_window_get_width(gdk_win) -
-			WINDOW_MARGIN_RIGHT,
+	int win_pos_x = (gdk_screen_width() - gdk_window_get_width(gdk_win))/2,
 	    win_pos_y = gdk_screen_height() - gdk_window_get_height(gdk_win) -
 			plugin_data->panel_height - WINDOW_MARGIN_BOTTOM;
 	gtk_window_set_gravity(GTK_WINDOW(win), GDK_GRAVITY_SOUTH_EAST);
