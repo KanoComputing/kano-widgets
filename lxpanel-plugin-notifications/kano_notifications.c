@@ -911,8 +911,11 @@ static void show_notification_window(kano_notifications_t *plugin_data,
 	gtk_user_data_t *user_data = g_new0(gtk_user_data_t, 1);
 	user_data->notification = notification;
 	user_data->plugin_data = plugin_data;
-	gtk_signal_connect(GTK_OBJECT(eventbox), "button-release-event",
-			   GTK_SIGNAL_FUNC(eventbox_click_cb), user_data);
+
+	if (notification->command && strlen(notification->command) > 0) {
+		gtk_signal_connect(GTK_OBJECT(eventbox), "button-release-event",
+				   GTK_SIGNAL_FUNC(eventbox_click_cb), user_data);
+	}
 
 	GdkColor white;
 	gdk_color_parse("white", &white);
@@ -1003,28 +1006,26 @@ static void show_notification_window(kano_notifications_t *plugin_data,
 	gtk_box_pack_start(GTK_BOX(hbox), GTK_WIDGET(labels),
 			   TRUE, TRUE, 0);
 
-	/* Add the command button if there is a command */
-	if (notification->command && strlen(notification->command) > 0) {
-		GdkColor button_bg;
-		gdk_color_parse(BUTTON_COLOUR, &button_bg);
-		GtkWidget *arrow = gtk_image_new_from_file(X_BUTTON);
-		GtkWidget *button = gtk_event_box_new();
-		gtk_widget_modify_bg(button, GTK_STATE_NORMAL, &button_bg);
-		gtk_container_add(GTK_CONTAINER(button), arrow);
-		gtk_widget_set_size_request(button, BUTTON_WIDTH, BUTTON_HEIGHT);
-		gtk_signal_connect(GTK_OBJECT(button), "realize",
-			     GTK_SIGNAL_FUNC(button_realize_cb), NULL);
-		gtk_signal_connect(GTK_OBJECT(button), "enter-notify-event",
-			     GTK_SIGNAL_FUNC(button_enter_cb), NULL);
-		gtk_signal_connect(GTK_OBJECT(button), "leave-notify-event",
-			     GTK_SIGNAL_FUNC(button_leave_cb), NULL);
+	/* Create the X closing button */
+	GdkColor button_bg;
+	gdk_color_parse(BUTTON_COLOUR, &button_bg);
+	GtkWidget *arrow = gtk_image_new_from_file(X_BUTTON);
+	GtkWidget *button = gtk_event_box_new();
+	gtk_widget_modify_bg(button, GTK_STATE_NORMAL, &button_bg);
+	gtk_container_add(GTK_CONTAINER(button), arrow);
+	gtk_widget_set_size_request(button, BUTTON_WIDTH, BUTTON_HEIGHT);
+	gtk_signal_connect(GTK_OBJECT(button), "realize",
+		     GTK_SIGNAL_FUNC(button_realize_cb), NULL);
+	gtk_signal_connect(GTK_OBJECT(button), "enter-notify-event",
+		     GTK_SIGNAL_FUNC(button_enter_cb), NULL);
+	gtk_signal_connect(GTK_OBJECT(button), "leave-notify-event",
+		     GTK_SIGNAL_FUNC(button_leave_cb), NULL);
 
-		gtk_signal_connect(GTK_OBJECT(button), "button-release-event",
-			     GTK_SIGNAL_FUNC(button_click_cb), plugin_data);
+	gtk_signal_connect(GTK_OBJECT(button), "button-release-event",
+		     GTK_SIGNAL_FUNC(button_click_cb), plugin_data);
 
-		gtk_box_pack_start(GTK_BOX(hbox), GTK_WIDGET(button),
-				   FALSE, FALSE, 0);
-	}
+	gtk_box_pack_start(GTK_BOX(hbox), GTK_WIDGET(button),
+			   FALSE, FALSE, 0);
 
 	gtk_box_pack_start(GTK_BOX(box), GTK_WIDGET(hbox),
 			   TRUE, TRUE, 0);
