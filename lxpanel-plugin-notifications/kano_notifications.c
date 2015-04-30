@@ -112,7 +112,7 @@
 		"\"command\": \"sudo check-for-updates -d\"" \
 	"}"
 
-#define KANO_PROFILE_CMD "kano-profile"
+#define KANO_PROFILE_CMD "kano-profile-gui"
 #define KANO_LOGIN_CMD "kano-login 3"
 
 #define IS_TYPE(notification, notif_type) \
