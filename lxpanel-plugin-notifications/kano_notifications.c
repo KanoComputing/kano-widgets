@@ -861,7 +861,9 @@ static gboolean eventbox_click_cb(GtkWidget *w, GdkEventButton *event,
 	/* User clicked on this world notification command.
 	   Save this event in Kano Tracker. It will be audited
 	   in the form: "world-notification <byline>" to keep a counter. */
-	char *tracker_cmd_prolog = "kano-profile-cli increment_app_runtime "
+	/* TODO: This no longer makes sense we need to replace it with something else
+	   since the old tracker doesn't work any more. */
+	/* char *tracker_cmd_prolog = "kano-profile-cli increment_app_runtime "
 				   "'world-notification ";
 	int tracker_cmd_len = strlen(tracker_cmd_prolog) +
 				     strlen(user_data->notification->byline) +
@@ -873,7 +875,7 @@ static gboolean eventbox_click_cb(GtkWidget *w, GdkEventButton *event,
 		g_strlcat(tracker_cmd, user_data->notification->byline,
 			  tracker_cmd_len);
 		g_strlcat(tracker_cmd, "' 0", tracker_cmd_len);
-	}
+	}*/
 
 	/* Launch the application pointed to by the "command"
 	   notification field */
@@ -883,10 +885,11 @@ static gboolean eventbox_click_cb(GtkWidget *w, GdkEventButton *event,
 
 	/* Notification tracking is done after processing the visual work,
 	   to avoid UIX delays */
-	if (tracker_cmd) {
+	/* TODO: to be removed or refactored */
+	/*if (tracker_cmd) {
 		launch_cmd(tracker_cmd, FALSE);
 		g_free(tracker_cmd);
-	}
+	}*/
 
 	return TRUE;
 }
