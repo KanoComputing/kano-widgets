@@ -64,55 +64,6 @@ static void hide_notification_window(kano_notifications_t *plugin_data)
 }
 
 /*
- * A callback for when the user clicks on the image.
- */
-static gboolean button_click_cb(GtkWidget *w, GdkEventButton *event,
-				  kano_notifications_t *plugin_data)
-{
-	hide_notification_window(plugin_data);
-	return TRUE;
-}
-
-/*
- * Set the hover cursor of the launch button to HAND1
- */
-static gboolean button_realize_cb(GtkWidget *widget, void *data)
-{
-	GdkCursor *cursor;
-	cursor = gdk_cursor_new(GDK_HAND1);
-	gdk_window_set_cursor(widget->window, cursor);
-	gdk_flush();
-	gdk_cursor_destroy(cursor);
-
-	return TRUE;
-}
-
-
-/*
- * The command button's hover in callback. Changes the colour of it.
- */
-static gboolean button_enter_cb(GtkWidget *widget, GdkEvent *event, void *data)
-{
-	GdkColor button_bg;
-	gdk_color_parse(BUTTON_HIGHLIGHTED_COLOUR, &button_bg);
-	gtk_widget_modify_bg(widget, GTK_STATE_NORMAL, &button_bg);
-	return TRUE;
-}
-
-
-/*
- * The command button's hover out callback. Changes the colour of it.
- */
-static gboolean button_leave_cb(GtkWidget *widget, GdkEvent *event, void *data)
-{
-	GdkColor button_bg;
-	gdk_color_parse(BUTTON_COLOUR, &button_bg);
-	gtk_widget_modify_bg(widget, GTK_STATE_NORMAL, &button_bg);
-	return TRUE;
-}
-
-
-/*
  * Launch the command that is associated with the notification.
  */
 static gboolean eventbox_click_cb(GtkWidget *w, GdkEventButton *event,
@@ -154,6 +105,165 @@ static gboolean eventbox_click_cb(GtkWidget *w, GdkEventButton *event,
 	return TRUE;
 }
 
+/*
+ * A callback for when the user clicks on the closing button.
+ */
+static gboolean close_button_click_cb(GtkWidget *w, GdkEventButton *event,
+				      kano_notifications_t *plugin_data)
+{
+	hide_notification_window(plugin_data);
+	return TRUE;
+}
+
+/*
+ * Set the hover cursor of the launch button to HAND1
+ */
+static gboolean button_realize_cb(GtkWidget *widget, void *data)
+{
+	GdkCursor *cursor;
+	cursor = gdk_cursor_new(GDK_HAND1);
+	gdk_window_set_cursor(widget->window, cursor);
+	gdk_flush();
+	gdk_cursor_destroy(cursor);
+
+	return TRUE;
+}
+
+
+/*
+ * The command button's hover in/out callback. Changes the colour of it.
+ */
+static gboolean button_hover_cb(GtkWidget *widget, GdkEvent *event,
+				gchar *bg_colour)
+{
+	GdkColor c;
+	gdk_color_parse(bg_colour, &c);
+	gtk_widget_modify_bg(widget, GTK_STATE_NORMAL, &c);
+	return TRUE;
+}
+
+/* Sets the appropriate callbacks to the object for the cursor
+ * to change to hand when hovering over it.
+ */
+static void set_hover_callbacks(GtkWidget *w, gchar *default_bg,
+				gchar *hover_bg)
+{
+	gtk_signal_connect(GTK_OBJECT(w), "realize",
+		     GTK_SIGNAL_FUNC(button_realize_cb), NULL);
+	gtk_signal_connect(GTK_OBJECT(w), "enter-notify-event",
+		     GTK_SIGNAL_FUNC(button_hover_cb), hover_bg);
+	gtk_signal_connect(GTK_OBJECT(w), "leave-notify-event",
+		     GTK_SIGNAL_FUNC(button_hover_cb), default_bg);
+}
+
+/* Creates the closing X button widget for the bottom right corner of
+ * the notification window.
+ */
+static GtkWidget *construct_x_button_widget(kano_notifications_t *plugin_data)
+{
+	GdkColor button_bg;
+	gdk_color_parse(BUTTON_COLOUR, &button_bg);
+
+	GtkWidget *arrow = gtk_image_new_from_file(X_BUTTON);
+
+	GtkWidget *x_button = gtk_event_box_new();
+	gtk_widget_modify_bg(x_button, GTK_STATE_NORMAL, &button_bg);
+	gtk_container_add(GTK_CONTAINER(x_button), arrow);
+	gtk_widget_set_size_request(x_button, BUTTON_WIDTH, BUTTON_HEIGHT);
+
+	set_hover_callbacks(x_button, BUTTON_COLOUR, BUTTON_HIGHLIGHTED_COLOUR);
+
+	gtk_signal_connect(GTK_OBJECT(x_button), "button-release-event",
+		     GTK_SIGNAL_FUNC(close_button_click_cb), plugin_data);
+
+	return x_button;
+}
+
+static gboolean launch_button_cb(GtkWidget *w, GdkEventButton *event,
+				gtk_user_data_t *user_data)
+{
+	if (user_data->command)
+		launch_cmd(user_data->command, TRUE);
+
+	hide_notification_window(user_data->plugin_data);
+	g_free(user_data);
+
+	return TRUE;
+}
+
+
+static GtkWidget *construct_extra_button(gchar *label, gchar *colour,
+					 gchar *hover, gchar *command,
+					 kano_notifications_t *plugin_data)
+{
+	GdkColor button_bg, label_colour;
+	GtkWidget *button = gtk_event_box_new();
+
+	if (colour) {
+		gdk_color_parse(colour, &button_bg);
+		if (!hover)
+			hover = colour;
+		set_hover_callbacks(button, colour, hover);
+	} else {
+		gdk_color_parse(BUTTON_COLOUR, &button_bg);
+		set_hover_callbacks(button, BUTTON_COLOUR,
+				    BUTTON_HIGHLIGHTED_COLOUR);
+	}
+	gtk_widget_modify_bg(button, GTK_STATE_NORMAL, &button_bg);
+
+	GtkWidget *label_widget = gtk_label_new(NULL);
+	gtk_label_set_text(GTK_LABEL(label_widget), label);
+
+	/* Set the label's font size and weight */
+	GtkStyle *style = gtk_widget_get_style(label_widget);
+	pango_font_description_set_size(style->font_desc, 11*PANGO_SCALE);
+	pango_font_description_set_weight(style->font_desc, PANGO_WEIGHT_BOLD);
+	gtk_widget_modify_font(label_widget, style->font_desc);
+
+	gdk_color_parse(EXTRA_BUTTON_LABEL_COLOUR, &label_colour);
+	gtk_widget_modify_fg(label_widget, GTK_STATE_NORMAL, &label_colour);
+
+	/* Center the label within the eventbox */
+	GtkWidget *label_align = gtk_alignment_new(0.5, 0.5, 0, 0);
+	gtk_alignment_set_padding(GTK_ALIGNMENT(label_align), 0, 0, 22, 22);
+	gtk_container_add(GTK_CONTAINER(label_align), label_widget);
+
+	gtk_container_add(GTK_CONTAINER(button), label_align);
+
+	//gtk_widget_set_size_request(button, -1, BUTTON_HEIGHT);
+
+	gtk_user_data_t *user_data = g_new0(gtk_user_data_t, 1);
+	user_data->notification = NULL;
+	user_data->plugin_data = plugin_data;
+	user_data->command = command;
+
+	gtk_signal_connect(GTK_OBJECT(button), "button-release-event",
+		     GTK_SIGNAL_FUNC(launch_button_cb), user_data);
+
+	return button;
+}
+
+static GtkWidget *construct_extra_buttons(kano_notifications_t *plugin_data,
+					  notification_info_t *n)
+{
+	GtkWidget *buttons = gtk_vbox_new(FALSE, 0);
+
+	if (n->button1_label) {
+		GtkWidget *button1 = construct_extra_button(n->button1_label,
+					n->button1_colour, n->button1_hover,
+					n->button1_command, plugin_data);
+		gtk_box_pack_start(GTK_BOX(buttons), button1, TRUE, TRUE, 0);
+	}
+
+	if (n->button2_label) {
+		GtkWidget *button2 = construct_extra_button(n->button2_label,
+					n->button2_colour, n->button2_hover,
+					n->button2_command, plugin_data);
+		gtk_box_pack_start(GTK_BOX(buttons), button2, TRUE, TRUE, 0);
+	}
+
+	return buttons;
+}
 
 /*
  * Constructs the notification window and display's it.
@@ -174,6 +284,7 @@ void show_notification_window(kano_notifications_t *plugin_data,
 	gtk_user_data_t *user_data = g_new0(gtk_user_data_t, 1);
 	user_data->notification = notification;
 	user_data->plugin_data = plugin_data;
+	user_data->command = NULL;
 
 	if (notification->command && strlen(notification->command) > 0) {
 		gtk_signal_connect(GTK_OBJECT(eventbox), "button-release-event",
@@ -187,6 +298,9 @@ void show_notification_window(kano_notifications_t *plugin_data,
 	GtkWidget *box = gtk_vbox_new(FALSE, 0);
 	gtk_container_add(GTK_CONTAINER(eventbox), GTK_WIDGET(box));
 
+	/* A notification with a small image on the side rather than the
+	   large one at the top.
+	*/
 	if (!IS_TYPE(notification, "small") && notification->image_path) {
 		GtkWidget *image = gtk_image_new_from_file(notification->image_path);
 		gtk_widget_add_events(image, GDK_BUTTON_RELEASE_MASK);
@@ -269,25 +383,16 @@ void show_notification_window(kano_notifications_t *plugin_data,
 	gtk_box_pack_start(GTK_BOX(hbox), GTK_WIDGET(labels),
 			   TRUE, TRUE, 0);
 
-	/* Create the X closing button */
-	GdkColor button_bg;
-	gdk_color_parse(BUTTON_COLOUR, &button_bg);
-	GtkWidget *arrow = gtk_image_new_from_file(X_BUTTON);
-	GtkWidget *button = gtk_event_box_new();
-	gtk_widget_modify_bg(button, GTK_STATE_NORMAL, &button_bg);
-	gtk_container_add(GTK_CONTAINER(button), arrow);
-	gtk_widget_set_size_request(button, BUTTON_WIDTH, BUTTON_HEIGHT);
-	gtk_signal_connect(GTK_OBJECT(button), "realize",
-		     GTK_SIGNAL_FUNC(button_realize_cb), NULL);
-	gtk_signal_connect(GTK_OBJECT(button), "enter-notify-event",
-		     GTK_SIGNAL_FUNC(button_enter_cb), NULL);
-	gtk_signal_connect(GTK_OBJECT(button), "leave-notify-event",
-		     GTK_SIGNAL_FUNC(button_leave_cb), NULL);
-
-	gtk_signal_connect(GTK_OBJECT(button), "button-release-event",
-		     GTK_SIGNAL_FUNC(button_click_cb), plugin_data);
-
-	gtk_box_pack_start(GTK_BOX(hbox), GTK_WIDGET(button),
+	/* Create the buttons on the right side of the notification */
+	GtkWidget *buttons_widget;
+	if (IS_TYPE(notification, "small") &&
+	    (notification->button1_label || notification->button2_label)) {
+		buttons_widget = construct_extra_buttons(plugin_data,
+							 notification);
+	} else {
+		buttons_widget = construct_x_button_widget(plugin_data);
+	}
+	gtk_box_pack_start(GTK_BOX(hbox), GTK_WIDGET(buttons_widget),
 			   FALSE, FALSE, 0);
 
 	gtk_box_pack_start(GTK_BOX(box), GTK_WIDGET(hbox),
@@ -317,7 +422,6 @@ void show_notification_window(kano_notifications_t *plugin_data,
 				(GSourceFunc) close_notification,
 				(gpointer) plugin_data);
 }
-
 
 /* This will queue and show the kano-world registration and updater reminders
  * if needed.

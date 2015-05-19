@@ -368,12 +368,20 @@ notification_info_t *get_json_notification(gchar *json_data)
 {
 	JSON_Value *root_value = NULL;
 	JSON_Object *root = NULL;
-	const char *title = NULL;
-	const char *byline = NULL;
-	const char *image_path = NULL;
-	const char *command = NULL;
-	const char *sound = NULL;
-	const char *type = NULL;
+	const char *title = NULL,
+		   *byline = NULL,
+		   *image_path = NULL,
+		   *command = NULL,
+		   *sound = NULL,
+		   *type = NULL,
+		   *button1_label = NULL,
+		   *button1_colour = NULL,
+		   *button1_command = NULL,
+		   *button1_hover = NULL,
+		   *button2_label = NULL,
+		   *button2_colour = NULL,
+		   *button2_command = NULL,
+		   *button2_hover = NULL;
 
 	root_value = json_parse_string(json_data);
 	if (json_value_get_type(root_value) != JSONObject) {
@@ -399,6 +407,14 @@ notification_info_t *get_json_notification(gchar *json_data)
 	command = json_object_get_string(root, "command");
 	sound = json_object_get_string(root, "sound");
 	type = json_object_get_string(root, "type");
+	button1_label = json_object_get_string(root, "button1_label");
+	button1_colour = json_object_get_string(root, "button1_colour");
+	button1_hover = json_object_get_string(root, "button1_hover");
+	button1_command = json_object_get_string(root, "button1_command");
+	button2_label = json_object_get_string(root, "button2_label");
+	button2_colour = json_object_get_string(root, "button2_colour");
+	button2_command = json_object_get_string(root, "button2_command");
+	button2_hover = json_object_get_string(root, "button2_hover");
 
 	notification_info_t *data = g_new0(notification_info_t, 1);
 
@@ -426,6 +442,54 @@ notification_info_t *get_json_notification(gchar *json_data)
 	if (type) {
 		data->type = g_new0(gchar, strlen(type) + 1);
 		g_strlcpy(data->type, type, strlen(type) + 1);
+	}
+
+	if (button1_label) {
+		data->button1_label = g_new0(gchar, strlen(button1_label) + 1);
+		g_strlcpy(data->button1_label, button1_label,
+			  strlen(button1_label) + 1);
+
+		if (button1_colour) {
+			data->button1_colour = g_new0(gchar, strlen(button1_colour) + 1);
+			g_strlcpy(data->button1_colour, button1_colour,
+				  strlen(button1_colour) + 1);
+		}
+
+		if (button1_hover) {
+			data->button1_hover = g_new0(gchar, strlen(button1_hover) + 1);
+			g_strlcpy(data->button1_hover, button1_hover,
+				  strlen(button1_hover) + 1);
+		}
+
+		if (button1_command) {
+			data->button1_command = g_new0(gchar, strlen(button1_command) + 1);
+			g_strlcpy(data->button1_command, button1_command,
+				  strlen(button1_command) + 1);
+		}
+	}
+
+	if (button2_label) {
+		data->button2_label = g_new0(gchar, strlen(button2_label) + 1);
+		g_strlcpy(data->button2_label, button2_label,
+			  strlen(button2_label) + 1);
+
+		if (button2_colour) {
+			data->button2_colour = g_new0(gchar, strlen(button2_colour) + 1);
+			g_strlcpy(data->button2_colour, button2_colour,
+				  strlen(button2_colour) + 1);
+		}
+
+		if (button2_hover) {
+			data->button2_hover = g_new0(gchar, strlen(button2_hover) + 1);
+			g_strlcpy(data->button2_hover, button2_hover,
+				  strlen(button2_hover) + 1);
+		}
+
+		if (button2_command) {
+			data->button2_command = g_new0(gchar, strlen(button2_command) + 1);
+			g_strlcpy(data->button2_command, button2_command,
+				  strlen(button2_command) + 1);
+		}
 	}
 
 	json_value_free(root_value);

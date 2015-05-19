@@ -37,6 +37,8 @@
 #define TITLE_COLOUR "#323232"
 #define BYLINE_COLOUR "#6e6e6e"
 
+#define EXTRA_BUTTON_LABEL_COLOUR "#ffffff"
+
 #define ON_TIME 60000
 
 #define REGISTER_REMINDER \
@@ -51,6 +53,7 @@
 /* This struct is used exclusively for passing user data to GTK signals. */
 typedef struct {
 	notification_info_t *notification;
+	gchar *command;
 	kano_notifications_t *plugin_data;
 } gtk_user_data_t;
 
