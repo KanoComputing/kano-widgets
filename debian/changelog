@@ -1,3 +1,9 @@
+kano-widgets (2.0-1) unstable; urgency=low
+
+  * Implemented notifications configurable buttons
+
+ -- Team Kano <dev@kano.me>  Tue, 19 Mar 2015 15:51:00 +0100
+
 kano-widgets (1.2.4-3) unstable; urgency=low
 
   * Implemented enable/disable for the notification widget
