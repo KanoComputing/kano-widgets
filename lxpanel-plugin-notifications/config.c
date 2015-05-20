@@ -77,7 +77,7 @@ gchar *get_conf_filename(void)
 gboolean is_user_registered()
 {
 	const gchar *pf_tmp = "/home/%s/.kanoprofile/profile/profile.json";
-	size_t bufsize = strlen(pf_tmp);
+	size_t bufsize;
 
 	/* Get username for the homedir path */
 	uid_t uid = geteuid();
@@ -111,7 +111,7 @@ gboolean is_user_registered()
 	root = json_value_get_object(root_value);
 	id = json_object_get_string(root, "kanoworld_id");
 	json_value_free(root_value);
-	return id != NULL;
+	return (id != NULL) && strlen(id) > 0;
 }
 
 
