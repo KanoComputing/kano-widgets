@@ -8,6 +8,7 @@
 import os
 import json
 from kano.logging import logger
+from kano.timeout import timeout
 from kano.utils import get_user_unsudoed, get_home_by_username
 
 
@@ -137,6 +138,7 @@ def display_generic_notification(title, byline, image=None, command=None,
     _send_to_widget(json.dumps(notification_data))
 
 
+@timeout(2)
 def _send_to_widget(message):
     """ Dispatch a message to the notification pipe
 
