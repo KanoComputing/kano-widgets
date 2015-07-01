@@ -95,7 +95,7 @@ gboolean is_user_registered()
 	/* Open the JSON */
 	JSON_Value *root_value = NULL;
 	JSON_Object *root = NULL;
-	const gchar *id = NULL;
+	gchar *id = NULL;
 
 	root_value = json_parse_file(profile);
 	g_free(profile);
@@ -110,8 +110,9 @@ gboolean is_user_registered()
 
 	root = json_value_get_object(root_value);
 	id = json_object_get_string(root, "kanoworld_id");
+	bool retval = (id != NULL) && strlen(id) > 0;
 	json_value_free(root_value);
-	return (id != NULL) && strlen(id) > 0;
+	return retval;
 }
 
 
