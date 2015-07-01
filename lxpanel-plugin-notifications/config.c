@@ -110,7 +110,7 @@ gboolean is_user_registered()
 
 	root = json_value_get_object(root_value);
 	id = json_object_get_string(root, "kanoworld_id");
-	bool retval = (id != NULL) && strlen(id) > 0;
+	gboolean retval = (id != NULL) && strlen(id) > 0;
 	json_value_free(root_value);
 	return retval;
 }
