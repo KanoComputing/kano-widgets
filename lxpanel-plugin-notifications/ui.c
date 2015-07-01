@@ -462,8 +462,8 @@ gboolean close_notification(kano_notifications_t *plugin_data)
 		plugin_data->window = NULL;
 
 		notification_info_t *notification = g_list_nth_data(plugin_data->queue, 0);
-		free_notification(notification);
 		plugin_data->queue = g_list_remove(plugin_data->queue, notification);
+		free_notification(notification);
 
 
 		if (g_list_length(plugin_data->queue) >= 1) {
