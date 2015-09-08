@@ -418,6 +418,11 @@ void show_notification_window(kano_notifications_t *plugin_data,
 		g_free(aplay_cmd);
 	}
 
+	/* Change speaker LED colour for notification. */
+
+	launch_cmd("kano-speakerleds notify start", FALSE);
+
+
 	plugin_data->window_timeout = g_timeout_add(ON_TIME,
 				(GSourceFunc) close_notification,
 				(gpointer) plugin_data);
@@ -455,6 +460,10 @@ static void show_reminders(kano_notifications_t *plugin_data)
  */
 gboolean close_notification(kano_notifications_t *plugin_data)
 {
+	/* Change speaker LED colour back after notification. */
+
+	launch_cmd("kano-speakerleds notify stop", FALSE);
+
 	if (plugin_data->window != NULL) {
 		g_mutex_lock(&(plugin_data->lock));
 
