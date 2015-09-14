@@ -226,7 +226,7 @@ static void set_award_command(notification_info_t *notification)
  * TODO: Now that the widget supports JSON notifications, this logic
  *       could be moved outside of the widget itself.
  */
-static notification_info_t *get_notification_by_id(gchar *id)
+static notification_info_t *get_notification_by_id(gchar *id, gboolean free_unparsed)
 {
 	gchar **tokens = g_strsplit(id, ":", 0);
 	gchar **iter;
@@ -249,6 +249,10 @@ static notification_info_t *get_notification_by_id(gchar *id)
 
 		notification_info_t *data = g_new0(notification_info_t, 1);
 
+		/* pass ownership of the input */
+		data->free_unparsed = free_unparsed;
+		data->unparsed = id;
+		
 		/* Allocate and set the title */
 		bufsize = strlen(LEVEL_TITLE);
 		data->title = g_new0(gchar, bufsize+1);
@@ -282,6 +286,10 @@ static notification_info_t *get_notification_by_id(gchar *id)
 	}
 
 	notification_info_t *data = g_new0(notification_info_t, 1);
+
+	/* pass ownership of the input */
+	data->free_unparsed = free_unparsed;
+	data->unparsed = id;
 
 	if (g_strcmp0(tokens[0], "badges") == 0) {
 		/* Allocate and set the title */
@@ -364,7 +372,7 @@ static notification_info_t *get_notification_by_id(gchar *id)
  *
  * All keys except the title and byline are optional.
  */
-notification_info_t *get_json_notification(gchar *json_data)
+notification_info_t *get_json_notification(gchar *json_data, gboolean free_unparsed)
 {
 	JSON_Value *root_value = NULL;
 	JSON_Object *root = NULL;
@@ -417,6 +425,9 @@ notification_info_t *get_json_notification(gchar *json_data)
 	button2_hover = json_object_get_string(root, "button2_hover");
 
 	notification_info_t *data = g_new0(notification_info_t, 1);
+
+	data->unparsed = json_data;
+	data->free_unparsed = free_unparsed;
 
 	data->title = g_new0(gchar, strlen(title) + 1);
 	g_strlcpy(data->title, title, strlen(title) + 1);
@@ -586,12 +597,16 @@ static gboolean io_watch_cb(GIOChannel *source, GIOCondition cond, gpointer data
 		}
 
 		/* See if the notification is a JSON */
-		notification_info_t *data = get_json_notification(line);
+		notification_info_t *data = get_json_notification(line, TRUE);
 
 		if (!data)
-			data = get_notification_by_id(line);
+		  data = get_notification_by_id(line, TRUE);
 
-		g_free(line);
+		/* if data is valid, we pass ownership of 'line' to it for later use.
+		   It is then freed when 'data' is freed */
+		if(!data)
+		  g_free(line);
+
 
 		if (data) {
 			g_mutex_lock(&(plugin_data->lock));

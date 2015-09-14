@@ -20,7 +20,8 @@
 #include "notifications.h"
 #include "config.h"
 
-
+#define LED_START_CMD "sudo -b kano-speakerleds notification start"
+#define LED_STOP_CMD "sudo kano-speakerleds notification stop"
 /*
  * Non-blocking way of launching a command.
  */
@@ -418,6 +419,17 @@ void show_notification_window(kano_notifications_t *plugin_data,
 		g_free(aplay_cmd);
 	}
 
+	/* Change speaker LED colour for notification. */
+
+	{
+	        int bufsize = strlen(LED_START_CMD)+strlen(notification->unparsed)+4;
+		gchar *notify_cmd = g_new0(gchar, bufsize);
+		g_snprintf(notify_cmd, bufsize, LED_START_CMD " '%s'", notification->unparsed);
+		launch_cmd(notify_cmd, FALSE);
+		g_free(notify_cmd);
+	}
+
+
 	plugin_data->window_timeout = g_timeout_add(ON_TIME,
 				(GSourceFunc) close_notification,
 				(gpointer) plugin_data);
@@ -436,7 +448,7 @@ static void show_reminders(kano_notifications_t *plugin_data)
 
 	notification_info_t *notif = NULL;
 	if (!is_user_registered()) {
-		notif = get_json_notification(REGISTER_REMINDER);
+   	        notif = get_json_notification(REGISTER_REMINDER, FALSE);
 		plugin_data->queue = g_list_append(plugin_data->queue, notif);
 
 	}
@@ -455,6 +467,10 @@ static void show_reminders(kano_notifications_t *plugin_data)
  */
 gboolean close_notification(kano_notifications_t *plugin_data)
 {
+	/* Change speaker LED colour back after notification. */
+
+	launch_cmd(LED_STOP_CMD, FALSE);
+
 	if (plugin_data->window != NULL) {
 		g_mutex_lock(&(plugin_data->lock));
 

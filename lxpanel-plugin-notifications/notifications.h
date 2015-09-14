@@ -57,6 +57,9 @@ typedef struct {
  * Represents a single notification to be displayed.
  */
 typedef struct {
+        gboolean free_unparsed; /* unparsed was allocated/static */
+        gchar *unparsed; /* original unparsed notification */
+  
 	gchar *title; /* mandatory field */
 	gchar *byline; /* mandatory field */
 
@@ -85,6 +88,9 @@ typedef struct {
  */
 static inline void free_notification(notification_info_t *data)
 {
+        if(data->free_unparsed){
+ 	      g_free(data->unparsed);
+        }
 	g_free(data->image_path);
 	g_free(data->title);
 	g_free(data->byline);
@@ -105,6 +111,6 @@ static inline void free_notification(notification_info_t *data)
 	g_free(data);
 }
 
-notification_info_t *get_json_notification(gchar *json_data);
+notification_info_t *get_json_notification(gchar *json_data, gboolean free_unparsed);
 
 #endif
