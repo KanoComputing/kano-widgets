@@ -131,8 +131,6 @@ int main(int argc, char *argv[])
  */
 static void cleanup(gpointer data)
 {
-	/* FIXME: We are not being called during destructor.
-	   lxpanel is agressively killed? */
 
 	kano_notifications_t *plugin_data = (kano_notifications_t *)data;
 
