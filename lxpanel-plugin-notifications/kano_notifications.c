@@ -14,8 +14,6 @@
 #include <gdk-pixbuf/gdk-pixbuf.h>
 #include <gio/gio.h>
 
-#include <lxpanel/plugin.h>
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
@@ -63,21 +61,19 @@
 
 static gboolean io_watch_cb(GIOChannel *source, GIOCondition cond, gpointer data);
 
-static GtkWidget *plugin_constructor(LXPanel *panel, config_setting_t *settings);
-static void plugin_destructor(gpointer data);
+static void cleanup(gpointer data);
 
 /*
- * This is the entry point of the plugin in LXPanel. It's meant to
- * initialise the plugin_data structure.
+ * Main body - does initialisation, most actual work runs in io_watch_cb.
+ * 
  */
-static GtkWidget *plugin_constructor(LXPanel *panel, config_setting_t *settings)
+int main(int argc, char *argv[])
 {
 	/* allocate our private structure instance */
 	kano_notifications_t *plugin_data = g_new0(kano_notifications_t, 1);
 
-	GtkAllocation allocation;
-	gtk_widget_get_allocation(GTK_WIDGET(&(panel->window)), &allocation);
-	plugin_data->panel_height = allocation.height;
+	plugin_data->panel_height = 44; //FIXME - make this configurable
+	gtk_init (&argc, &argv);
 
 
 	plugin_data->window = NULL;
@@ -122,21 +118,19 @@ static GtkWidget *plugin_constructor(LXPanel *panel, config_setting_t *settings)
 
 	load_conf(&(plugin_data->conf));
 
-	GtkWidget *pwid = gtk_event_box_new();
 
-	/* put it where it belongs */
-	lxpanel_plugin_set_data(pwid, plugin_data, plugin_destructor);
+    
+	gtk_main ();
 
-	return pwid;
+	cleanup(plugin_data);
+
 }
 
 /*
- * The oposite of plugin_constructor, to free up resources.
+ * Free up resources.
  */
-static void plugin_destructor(gpointer data)
+static void cleanup(gpointer data)
 {
-	/* FIXME: We are not being called during destructor.
-	   lxpanel is agressively killed? */
 
 	kano_notifications_t *plugin_data = (kano_notifications_t *)data;
 
@@ -634,14 +628,3 @@ static gboolean io_watch_cb(GIOChannel *source, GIOCondition cond, gpointer data
 
 	return TRUE;
 }
-
-FM_DEFINE_MODULE(lxpanel_gtk, kano_notifications)
-
-/* Plugin descriptor. */
-LXPanelPluginInit fm_module_init_lxpanel_gtk = {
-    .name = N_("Kano Notifications"),
-    .description = N_("Displays various types of alerts and notifications."),
-    .new_instance = plugin_constructor,
-    .one_per_system = TRUE,
-    .expand_available = FALSE
-};

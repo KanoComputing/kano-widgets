@@ -1,3 +1,9 @@
+kano-widgets (2.2-1) unstable; urgency=low
+
+  * Made notification widget into a separate executable.
+
+ -- Team Kano <dev@kano.me>  Thu, 24 Sep 2015 11:30:00 +0100
+
 kano-widgets (2.0-1) unstable; urgency=low
 
   * Implemented notifications configurable buttons

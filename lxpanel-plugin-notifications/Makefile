@@ -5,11 +5,13 @@
 #
 
 CC=gcc
-CFLAGS=`pkg-config --cflags lxpanel gtk+-2.0`
-LIBS=`pkg-config --libs lxpanel gtk+-2.0`-lkdesk-hourglass
+CFLAGS= `pkg-config --cflags gtk+-2.0` 
+LIBS=`pkg-config --libs gtk+-2.0`-lkdesk-hourglass
+MODE=755
+
 SRC=kano_notifications.c parson/parson.c config.c ui.c
-BIN=kano_notifications.so
-INSTALL_PATH=/usr/lib/`dpkg-architecture -qDEB_HOST_MULTIARCH`/lxpanel/plugins/
+BIN=kano-notifications-daemon
+INSTALL_PATH=/usr/bin
 
 .PHONY: init
 
@@ -20,8 +22,8 @@ build: $(BIN)
 #	cd .. && git submodule update
 
 install: $(BIN)
-	install -p -m 0644 $(BIN) $(INSTALL_PATH)
+	install -p -m $(MODE) $(BIN) $(INSTALL_PATH)
 
 $(BIN): $(SRC)
-	$(CC) -Wall $(CFLAGS) -shared -fPIC $(SRC) -o $(BIN) $(LIBS)
+	$(CC) -Wall $(CFLAGS) $(SRC) -o $(BIN) $(LIBS)
 
