@@ -13,6 +13,7 @@
 #include <glib/gprintf.h>
 #include <gdk-pixbuf/gdk-pixbuf.h>
 #include <gio/gio.h>
+#include <stdlib.h>
 
 #include <kdesk-hourglass.h>
 
@@ -467,9 +468,11 @@ static void show_reminders(kano_notifications_t *plugin_data)
  */
 gboolean close_notification(kano_notifications_t *plugin_data)
 {
-	/* Change speaker LED colour back after notification. */
+	/* Change speaker LED colour back after notification. 
+	 * We use system() so we don't kill next led command for the next notification.
+	 */
 
-	launch_cmd(LED_STOP_CMD, FALSE);
+	system(LED_STOP_CMD);
 
 	if (plugin_data->window != NULL) {
 		g_mutex_lock(&(plugin_data->lock));
