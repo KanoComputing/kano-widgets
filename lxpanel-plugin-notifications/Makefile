@@ -5,7 +5,7 @@
 #
 
 CC=gcc
-CFLAGS= `pkg-config --cflags gtk+-2.0` 
+CFLAGS= `pkg-config --cflags gtk+-2.0` -g3
 LIBS=`pkg-config --libs gtk+-2.0`-lkdesk-hourglass
 MODE=755
 
