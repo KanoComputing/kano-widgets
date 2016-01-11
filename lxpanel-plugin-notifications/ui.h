@@ -39,7 +39,7 @@
 
 #define EXTRA_BUTTON_LABEL_COLOUR "#ffffff"
 
-#define ON_TIME 60000
+#define ON_TIME 6000
 
 #define REGISTER_REMINDER \
 	"{" \
