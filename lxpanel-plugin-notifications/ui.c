@@ -59,7 +59,13 @@ void launch_cmd(const char *cmd, gboolean hourglass)
 static void hide_notification_window(kano_notifications_t *plugin_data)
 {
 	if (g_mutex_trylock(&(plugin_data->lock)) == TRUE) {
-		g_source_remove(plugin_data->window_timeout);
+		if (plugin_data->window_timeout > 0) {
+			GSource *source_no;
+			source_no = g_main_context_find_source_by_id(NULL, plugin_data->window_timeout);
+			if (source_no) {
+				g_source_destroy(source_no);
+			}
+		}
 		g_mutex_unlock(&(plugin_data->lock));
 		close_notification(plugin_data);
 	} else {
