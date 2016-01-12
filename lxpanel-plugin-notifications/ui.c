@@ -23,6 +23,10 @@
 
 #define LED_START_CMD "sudo -b kano-speakerleds notification start"
 #define LED_STOP_CMD "sudo kano-speakerleds notification stop"
+
+
+static void close_notification_unsafe(kano_notifications_t *plugin_data);
+
 /*
  * Non-blocking way of launching a command.
  */
@@ -453,28 +457,43 @@ void show_notification_window(kano_notifications_t *plugin_data,
 	}
 
 
-	plugin_data->window_timeout = g_timeout_add(ON_TIME,
+	plugin_data->window_timeout = g_timeout_add_seconds(ON_TIME,
 				(GSourceFunc) close_notification,
 				(gpointer) plugin_data);
 }
 
-/* This will queue and show the kano-world registration and updater reminders
- * if needed.
+
+/* This will check whether the queue is empty and if so it will then check
+ * if the user is online and not registered. If all those conditions are met,
+ * it will add a registration reminder in the queue
  *
  * Expects plugin_data to be locked.
  */
-static void show_reminders(kano_notifications_t *plugin_data)
+
+static void add_reminder_to_queue(kano_notifications_t *plugin_data)
 {
-	/* Both reminders only make sense when the user is online */
-	if (!is_internet())
-		return;
-
 	notification_info_t *notif = NULL;
-	if (!is_user_registered()) {
-   	        notif = get_json_notification(REGISTER_REMINDER, FALSE);
-		plugin_data->queue = g_list_append(plugin_data->queue, notif);
 
+	if (plugin_data == NULL) {
+		return;
 	}
+
+	if (g_list_length(plugin_data->queue)  == 0) {
+		/* Show the next one in the queue */
+		if (!is_internet())
+			return;
+
+		if (!is_user_registered()) {
+			notif = get_json_notification(REGISTER_REMINDER, FALSE);
+			plugin_data->queue = g_list_append(plugin_data->queue, notif);
+		}
+	}
+}
+
+
+void show_notification_window_from_q(kano_notifications_t *plugin_data)
+{
+	notification_info_t *notif = NULL;
 
 	if (g_list_length(plugin_data->queue) > 0) {
 		notif = g_list_nth_data(plugin_data->queue, 0);
@@ -482,8 +501,7 @@ static void show_reminders(kano_notifications_t *plugin_data)
 	}
 }
 
-
-gboolean destroy_gtk_window(kano_notifications_t *plugin_data)
+static gboolean destroy_gtk_window(kano_notifications_t *plugin_data)
 {
 	if (plugin_data->window != NULL) {
 		gtk_widget_destroy(plugin_data->window);
@@ -492,7 +510,7 @@ gboolean destroy_gtk_window(kano_notifications_t *plugin_data)
 	return TRUE;
 }
 
-gboolean destroy_top_queue_notification(kano_notifications_t *plugin_data)
+static gboolean destroy_notification_from_q(kano_notifications_t *plugin_data)
 {
 	notification_info_t *notification;
 
@@ -505,32 +523,15 @@ gboolean destroy_top_queue_notification(kano_notifications_t *plugin_data)
 	return TRUE;
 }
 
-gboolean close_notification_unsafe(kano_notifications_t *plugin_data)
+static void close_notification_unsafe(kano_notifications_t *plugin_data)
 {
 	if (plugin_data->window != NULL) {
 		system(LED_STOP_CMD);
-
 		destroy_gtk_window(plugin_data);
-
-		destroy_top_queue_notification(plugin_data);
-
-		if (g_list_length(plugin_data->queue) >= 1) {
-			/* Show the next one in the queue */
-			notification_info_t *notification = g_list_nth_data(plugin_data->queue, 0);
-			show_notification_window(plugin_data, notification);
-		} else {
-			/* If this was a las one in a row, queue additional
-			   reminders. */
-			if (!plugin_data->queue_has_reminders) {
-				plugin_data->queue_has_reminders = TRUE;
-				show_reminders(plugin_data);
-			} else {
-				plugin_data->queue_has_reminders = FALSE;
-			}
-		}
+		destroy_notification_from_q(plugin_data);
+		add_reminder_to_queue(plugin_data);
+		show_notification_window_from_q(plugin_data);
 	}
-
-	return FALSE;
 }
 
 /*
@@ -564,6 +565,8 @@ gboolean close_notification(kano_notifications_t *plugin_data)
 			printf("Unlocked data from %s\n", debug_title);
 			g_free(debug_title);
 		}
+	} else {
+		printf("Attempted to close notification but window is NULL\n");
 	}
 
 	return FALSE;

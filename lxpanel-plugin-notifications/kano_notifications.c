@@ -78,7 +78,6 @@ int main(int argc, char *argv[])
 
 	plugin_data->window = NULL;
 	plugin_data->queue = NULL;
-	plugin_data->queue_has_reminders = FALSE;
 
 	plugin_data->paused = FALSE; /* TODO load from the configuration */
 
