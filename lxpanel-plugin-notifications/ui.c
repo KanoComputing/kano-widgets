@@ -462,35 +462,6 @@ void show_notification_window(kano_notifications_t *plugin_data,
 				(gpointer) plugin_data);
 }
 
-
-/* This will check whether the queue is empty and if so it will then check
- * if the user is online and not registered. If all those conditions are met,
- * it will add a registration reminder in the queue
- *
- * Expects plugin_data to be locked.
- */
-
-static void add_reminder_to_queue(kano_notifications_t *plugin_data)
-{
-	notification_info_t *notif = NULL;
-
-	if (plugin_data == NULL) {
-		return;
-	}
-
-	if (g_list_length(plugin_data->queue)  == 0) {
-		/* Show the next one in the queue */
-		if (!is_internet())
-			return;
-
-		if (!is_user_registered()) {
-			notif = get_json_notification(REGISTER_REMINDER, FALSE);
-			plugin_data->queue = g_list_append(plugin_data->queue, notif);
-		}
-	}
-}
-
-
 void show_notification_window_from_q(kano_notifications_t *plugin_data)
 {
 	notification_info_t *notif = NULL;
@@ -529,7 +500,6 @@ static void close_notification_unsafe(kano_notifications_t *plugin_data)
 		system(LED_STOP_CMD);
 		destroy_gtk_window(plugin_data);
 		destroy_notification_from_q(plugin_data);
-		add_reminder_to_queue(plugin_data);
 		show_notification_window_from_q(plugin_data);
 	}
 }
@@ -546,7 +516,6 @@ gboolean close_notification(kano_notifications_t *plugin_data)
 	 * We use system() so we don't kill next led command for the next notification.
 	 */
 	gchar *debug_title;
-	guint debug_title_length;
 
 	if (plugin_data->window != NULL) {
 		g_mutex_lock(&(plugin_data->lock));

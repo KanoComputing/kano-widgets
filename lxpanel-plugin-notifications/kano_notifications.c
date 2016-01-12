@@ -65,7 +65,7 @@ static void cleanup(gpointer data);
 
 /*
  * Main body - does initialisation, most actual work runs in io_watch_cb.
- * 
+ *
  */
 int main(int argc, char *argv[])
 {
@@ -117,8 +117,6 @@ int main(int argc, char *argv[])
 
 	load_conf(&(plugin_data->conf));
 
-
-    
 	gtk_main ();
 
 	cleanup(plugin_data);
@@ -245,7 +243,7 @@ static notification_info_t *get_notification_by_id(gchar *id, gboolean free_unpa
 		/* pass ownership of the input */
 		data->free_unparsed = free_unparsed;
 		data->unparsed = id;
-		
+
 		/* Allocate and set the title */
 		bufsize = strlen(LEVEL_TITLE);
 		data->title = g_new0(gchar, bufsize+1);
@@ -501,6 +499,80 @@ notification_info_t *get_json_notification(gchar *json_data, gboolean free_unpar
 	return data;
 }
 
+/* Returns TRUE if the two notifications are similar in terms of their content
+ *
+ *
+ */
+static gboolean notifcmp(notification_info_t *this, notification_info_t *other)
+{
+	if (this == NULL || other == NULL)
+		return FALSE;
+
+	if (this == other)
+		return TRUE;
+
+	if (g_strcmp0(this->title, other->title) != 0)
+		return FALSE;
+
+	if (g_strcmp0(this->byline, other->byline) != 0)
+		return FALSE;
+
+	if (g_strcmp0(this->type, other->type) != 0)
+		return FALSE;
+
+	if (g_strcmp0(this->command, other->command) != 0)
+		return FALSE;
+
+	if (g_strcmp0(this->image_path, other->image_path) != 0)
+		return FALSE;
+
+	if (g_strcmp0(this->sound, other->sound) != 0)
+		return FALSE;
+
+	return TRUE;
+}
+
+/* Returns whether the last element of the list is the registration reminder,
+ */
+static gboolean is_last_element_reminder(kano_notifications_t *plugin_data)
+{
+	GList *last = NULL;
+	notification_info_t *notif_last = NULL;
+	notification_info_t *notif_reminder = NULL;
+
+	if (plugin_data == NULL) {
+		return FALSE;
+	}
+
+	last = g_list_last(plugin_data->queue);
+	if (last != NULL) {
+		notif_last = last->data;
+
+		notif_reminder = get_json_notification(REGISTER_REMINDER, FALSE);
+
+		if (notifcmp(notif_last, notif_reminder) == TRUE) {
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
+
+static void append_reminder_to_q(kano_notifications_t *plugin_data)
+{
+	notification_info_t *notif = NULL;
+
+	if (plugin_data == NULL) {
+		return;
+	}
+
+	if (!is_internet())
+		return;
+
+	if (!is_user_registered()) {
+		notif = get_json_notification(REGISTER_REMINDER, FALSE);
+		plugin_data->queue = g_list_append(plugin_data->queue, notif);
+	}
+}
 
 /*
  * The main loop of this widget. It sets up an IO watch for the pipe and
@@ -593,12 +665,12 @@ static gboolean io_watch_cb(GIOChannel *source, GIOCondition cond, gpointer data
 		notification_info_t *data = get_json_notification(line, TRUE);
 
 		if (!data)
-		  data = get_notification_by_id(line, TRUE);
+			data = get_notification_by_id(line, TRUE);
 
 		/* if data is valid, we pass ownership of 'line' to it for later use.
 		   It is then freed when 'data' is freed */
 		if(!data)
-		  g_free(line);
+			g_free(line);
 
 
 		if (data) {
@@ -615,9 +687,17 @@ static gboolean io_watch_cb(GIOChannel *source, GIOCondition cond, gpointer data
 				return TRUE;
 			}
 
-			plugin_data->queue = g_list_append(plugin_data->queue, data);
+			if (is_last_element_reminder(plugin_data) == TRUE && (g_list_length(plugin_data->queue) > 1)) {
+				GList *last = NULL;
 
-			if (g_list_length(plugin_data->queue) <= 1 &&
+				last = g_list_last(plugin_data->queue);
+				plugin_data->queue = g_list_insert_before(plugin_data->queue, last, data);
+			} else {
+				plugin_data->queue = g_list_append(plugin_data->queue, data);
+				append_reminder_to_q(plugin_data);
+
+			}
+			if (g_list_length(plugin_data->queue) <= 2 &&
 			    !plugin_data->paused)
 				show_notification_window(plugin_data, data);
 
