@@ -288,6 +288,18 @@ void show_notification_window(kano_notifications_t *plugin_data,
 				     notification_info_t *notification)
 {
 	GtkWidget *win = gtk_window_new(GTK_WINDOW_POPUP);
+
+	if (notification != NULL) {
+		printf("Create notification %s\n", notification->title);
+	}
+	if (plugin_data->window != NULL) {
+		printf(" ### WARNING: Window data is not empty, will ovewrite it\n");
+	}
+	if (g_mutex_trylock(&(plugin_data->lock)) == TRUE) {
+		g_mutex_unlock(&(plugin_data->lock));
+		printf(" ### WARNING: NOT LOCKED WHILE CREATING notification\n");
+	}
+
 	plugin_data->window = win;
 
 	GtkStyle *style;
@@ -474,10 +486,10 @@ static void show_reminders(kano_notifications_t *plugin_data)
 gboolean destroy_gtk_window(kano_notifications_t *plugin_data)
 {
 	if (plugin_data->window != NULL) {
-	gtk_widget_destroy(plugin_data->window);
-	plugin_data->window = NULL;
+		gtk_widget_destroy(plugin_data->window);
+		plugin_data->window = NULL;
 	}
-	return TRUE
+	return TRUE;
 }
 
 gboolean destroy_top_queue_notification(kano_notifications_t *plugin_data)
@@ -490,7 +502,7 @@ gboolean destroy_top_queue_notification(kano_notifications_t *plugin_data)
 		free_notification(notification);
 	}
 
-	return TRUE
+	return TRUE;
 }
 
 gboolean close_notification_unsafe(kano_notifications_t *plugin_data)
@@ -539,7 +551,7 @@ gboolean close_notification(kano_notifications_t *plugin_data)
 		g_mutex_lock(&(plugin_data->lock));
 
 		notification_info_t *notification_dbg = g_list_nth_data(plugin_data->queue, 0);
-		debug_title = (gchar*) g_malloc((sizeof(gchar) + 1)*strlen(notification_dbg->title));
+		debug_title = (gchar*) g_malloc((sizeof(gchar) + 1) * strlen(notification_dbg->title));
 		if (debug_title != NULL) {
 			strcpy(debug_title, notification_dbg->title);
 			printf("  Locked data from %s\n", debug_title);
@@ -548,9 +560,11 @@ gboolean close_notification(kano_notifications_t *plugin_data)
 		close_notification_unsafe(plugin_data);
 
 		g_mutex_unlock(&(plugin_data->lock));
-		printf("Unlocked data from %s\n", debug_title);
+		if (debug_title != NULL) {
+			printf("Unlocked data from %s\n", debug_title);
+			g_free(debug_title);
+		}
 	}
-
 
 	return FALSE;
 }
