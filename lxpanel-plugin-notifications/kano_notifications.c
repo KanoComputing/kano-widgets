@@ -651,10 +651,8 @@ static gboolean io_watch_cb(GIOChannel *source, GIOCondition cond, gpointer data
 			g_mutex_lock(&(plugin_data->lock));
 			plugin_data->paused = FALSE;
 
-			if (g_list_length(plugin_data->queue) > 0) {
-				notification_info_t *first = g_list_nth_data(plugin_data->queue, 0);
-				show_notification_window(plugin_data, first);
-			}
+			printf("Got \'resume\', will show notification\n");
+			show_notification_window_from_q(plugin_data);
 
 			g_mutex_unlock(&(plugin_data->lock));
 			g_free(line);
@@ -698,8 +696,9 @@ static gboolean io_watch_cb(GIOChannel *source, GIOCondition cond, gpointer data
 
 			}
 			if (g_list_length(plugin_data->queue) <= 2 &&
-			    !plugin_data->paused)
-				show_notification_window(plugin_data, data);
+				!plugin_data->paused)
+				printf("Received Notification will show\n");
+				show_notification_window_from_q(plugin_data);
 
 			g_mutex_unlock(&(plugin_data->lock));
 		}

@@ -74,8 +74,6 @@ static void hide_notification_window(kano_notifications_t *plugin_data)
 		g_mutex_unlock(&(plugin_data->lock));
 	} else {
 		printf("Trying to get the mutex lock failed\n");
-		while(1) {
-		}
 	}
 }
 
@@ -298,6 +296,7 @@ void show_notification_window(kano_notifications_t *plugin_data,
 	}
 	if (plugin_data->window != NULL) {
 		printf(" ### WARNING: Window data is not empty, will ovewrite it\n");
+		return;
 	}
 	if (g_mutex_trylock(&(plugin_data->lock)) == TRUE) {
 		g_mutex_unlock(&(plugin_data->lock));
@@ -449,7 +448,7 @@ void show_notification_window(kano_notifications_t *plugin_data,
 	/* Change speaker LED colour for notification. */
 
 	{
-	        int bufsize = strlen(LED_START_CMD)+strlen(notification->unparsed)+4;
+		int bufsize = strlen(LED_START_CMD)+strlen(notification->unparsed)+4;
 		gchar *notify_cmd = g_new0(gchar, bufsize);
 		g_snprintf(notify_cmd, bufsize, LED_START_CMD " '%s'", notification->unparsed);
 		launch_cmd(notify_cmd, FALSE);
@@ -500,6 +499,7 @@ static void close_notification_unsafe(kano_notifications_t *plugin_data)
 		system(LED_STOP_CMD);
 		destroy_gtk_window(plugin_data);
 		destroy_notification_from_q(plugin_data);
+		printf("Closed notification\n");
 		show_notification_window_from_q(plugin_data);
 	}
 }
