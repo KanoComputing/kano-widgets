@@ -72,8 +72,6 @@ static void hide_notification_window(kano_notifications_t *plugin_data)
 		}
 		close_notification_unsafe(plugin_data);
 		g_mutex_unlock(&(plugin_data->lock));
-	} else {
-		printf("Trying to get the mutex lock failed\n");
 	}
 }
 
@@ -291,13 +289,8 @@ void show_notification_window(kano_notifications_t *plugin_data,
 {
 	GtkWidget *win = gtk_window_new(GTK_WINDOW_POPUP);
 
-	if (notification != NULL) {
-		printf("Create notification %s\n", notification->title);
-	}
-	if (plugin_data->window != NULL) {
-		printf(" ### WARNING: Window data is not empty, will ovewrite it\n");
+	if (notification == NULL)
 		return;
-	}
 
 	plugin_data->window = win;
 
@@ -461,8 +454,7 @@ gboolean show_notification_window_from_q(kano_notifications_t *plugin_data)
 {
 	notification_info_t *notif = NULL;
 	if (plugin_data == NULL)
-		return FALSE;
-	g_print("Show notification window called\n");
+		return G_SOURCE_REMOVE;
 
 	g_mutex_lock(&(plugin_data->lock));
 	if (plugin_data->window == NULL && g_list_length(plugin_data->queue) > 0) {
@@ -471,7 +463,7 @@ gboolean show_notification_window_from_q(kano_notifications_t *plugin_data)
 	}
 
 	g_mutex_unlock(&(plugin_data->lock));
-	return FALSE;
+	return G_SOURCE_REMOVE;
 }
 
 static gboolean destroy_gtk_window(kano_notifications_t *plugin_data)
@@ -502,7 +494,6 @@ static void close_notification_unsafe(kano_notifications_t *plugin_data)
 		system(LED_STOP_CMD);
 		destroy_gtk_window(plugin_data);
 		destroy_notification_from_q(plugin_data);
-		g_printf("Closed notification\n");
 		g_idle_add(show_notification_window_from_q, plugin_data);
 	}
 }
@@ -518,28 +509,14 @@ gboolean close_notification(kano_notifications_t *plugin_data)
 	/* Change speaker LED colour back after notification. 
 	 * We use system() so we don't kill next led command for the next notification.
 	 */
-	gchar *debug_title;
 
 	if (plugin_data->window != NULL) {
 		g_mutex_lock(&(plugin_data->lock));
 
-		notification_info_t *notification_dbg = g_list_nth_data(plugin_data->queue, 0);
-		debug_title = (gchar*) g_malloc((sizeof(gchar) + 1) * strlen(notification_dbg->title));
-		if (debug_title != NULL) {
-			strcpy(debug_title, notification_dbg->title);
-			printf("  Locked data from %s\n", debug_title);
-		}
-
 		close_notification_unsafe(plugin_data);
 
 		g_mutex_unlock(&(plugin_data->lock));
-		if (debug_title != NULL) {
-			printf("Unlocked data from %s\n", debug_title);
-			g_free(debug_title);
-		}
-	} else {
-		printf("Attempted to close notification but window is NULL\n");
 	}
 
-	return FALSE;
+	return G_SOURCE_REMOVE;
 }
