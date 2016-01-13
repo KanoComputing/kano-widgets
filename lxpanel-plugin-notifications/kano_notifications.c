@@ -502,7 +502,9 @@ notification_info_t *get_json_notification(gchar *json_data, gboolean free_unpar
 
 /* Returns TRUE if the two notifications are similar in terms of their content
  *
- *
+ * NOTE: This fn is certainly not an exhaustive comparison of the notification
+ * structures. It mainly focuses on the most visually important attributes.
+ * It is also optimised to exit quickly as soon as a difference is observed.
  */
 static gboolean notifcmp(notification_info_t *this, notification_info_t *other)
 {
