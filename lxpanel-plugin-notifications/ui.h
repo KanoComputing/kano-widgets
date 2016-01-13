@@ -58,7 +58,7 @@ typedef struct {
 } gtk_user_data_t;
 
 void launch_cmd(const char *cmd, gboolean hourglass);
-void show_notification_window_from_q(kano_notifications_t *plugin_data);
+gboolean show_notification_window_from_q(kano_notifications_t *plugin_data);
 gboolean close_notification(kano_notifications_t *plugin_data);
 
 #endif

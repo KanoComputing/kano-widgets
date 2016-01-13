@@ -457,11 +457,11 @@ void show_notification_window(kano_notifications_t *plugin_data,
 				(gpointer) plugin_data);
 }
 
-void show_notification_window_from_q(kano_notifications_t *plugin_data)
+gboolean show_notification_window_from_q(kano_notifications_t *plugin_data)
 {
 	notification_info_t *notif = NULL;
 	if (plugin_data == NULL)
-		return;
+		return FALSE;
 	g_print("Show notification window called\n");
 
 	g_mutex_lock(&(plugin_data->lock));
@@ -471,6 +471,7 @@ void show_notification_window_from_q(kano_notifications_t *plugin_data)
 	}
 
 	g_mutex_unlock(&(plugin_data->lock));
+	return FALSE;
 }
 
 static gboolean destroy_gtk_window(kano_notifications_t *plugin_data)
