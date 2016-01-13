@@ -651,7 +651,7 @@ static gboolean io_watch_cb(GIOChannel *source, GIOCondition cond, gpointer data
 			g_mutex_lock(&(plugin_data->lock));
 			plugin_data->paused = FALSE;
 
-			printf("Got \'resume\', will show notification\n");
+			printf("Got \'resume\', will show notifications (%s)\n", line);
 			show_notification_window_from_q(plugin_data);
 
 			g_mutex_unlock(&(plugin_data->lock));
