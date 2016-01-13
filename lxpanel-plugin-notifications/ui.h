@@ -39,6 +39,7 @@
 
 #define EXTRA_BUTTON_LABEL_COLOUR "#ffffff"
 
+// The following is in seconds. The timer is not guaranteed to be super precise
 #define ON_TIME 60
 
 #define REGISTER_REMINDER \
