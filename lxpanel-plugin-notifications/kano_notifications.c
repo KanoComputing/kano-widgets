@@ -541,21 +541,17 @@ static gboolean is_last_element_reminder(kano_notifications_t *plugin_data)
 	notification_info_t *notif_last = NULL;
 	notification_info_t *notif_reminder = NULL;
 
-	if (plugin_data == NULL) {
+	if (plugin_data == NULL)
 		return FALSE;
-	}
 
 	last = g_list_last(plugin_data->queue);
-	if (last != NULL) {
-		notif_last = last->data;
+	if (last == NULL)
+		return FALSE;
+	notif_last = last->data;
 
-		notif_reminder = get_json_notification(REGISTER_REMINDER, FALSE);
+	notif_reminder = get_json_notification(REGISTER_REMINDER, FALSE);
 
-		if (notifcmp(notif_last, notif_reminder) == TRUE) {
-			return TRUE;
-		}
-	}
-	return FALSE;
+	return notifcmp(notif_last, notif_reminder);
 }
 
 static void append_reminder_to_q(kano_notifications_t *plugin_data)
