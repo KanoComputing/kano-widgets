@@ -488,6 +488,13 @@ static gboolean destroy_notification_from_q(kano_notifications_t *plugin_data)
 	return TRUE;
 }
 
+/* This function is "unsafe" because it does not use any locking mechanisms
+ * to prevent concurrency issues and thus is not thread safe.
+ *
+ * A similarly named function (without the _unsafe suffix) is also available
+ *
+ *
+ */
 static void close_notification_unsafe(kano_notifications_t *plugin_data)
 {
 	if (plugin_data->window != NULL) {
