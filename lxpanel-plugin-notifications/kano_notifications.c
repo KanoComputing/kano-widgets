@@ -651,7 +651,7 @@ static gboolean io_watch_cb(GIOChannel *source, GIOCondition cond, gpointer data
 			g_mutex_lock(&(plugin_data->lock));
 			plugin_data->paused = FALSE;
 
-			printf("Got \'resume\', will show notifications (%s)\n", line);
+			g_printf("Got \'resume\', will show notifications (%s)\n", line);
 			g_idle_add(show_notification_window_from_q, plugin_data);
 
 			g_mutex_unlock(&(plugin_data->lock));
@@ -696,8 +696,10 @@ static gboolean io_watch_cb(GIOChannel *source, GIOCondition cond, gpointer data
 
 			}
 			if (g_list_length(plugin_data->queue) <= 2 &&
-				!plugin_data->paused)
+				!plugin_data->paused) {
+				g_printf("Added notification window\n");
 				g_idle_add(show_notification_window_from_q, plugin_data);
+			}
 
 			g_mutex_unlock(&(plugin_data->lock));
 		}

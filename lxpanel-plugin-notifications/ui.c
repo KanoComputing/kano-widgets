@@ -462,6 +462,7 @@ void show_notification_window_from_q(kano_notifications_t *plugin_data)
 	notification_info_t *notif = NULL;
 	if (plugin_data == NULL)
 		return;
+	g_print("Show notification window called\n");
 
 	g_mutex_lock(&(plugin_data->lock));
 	if (plugin_data->window == NULL && g_list_length(plugin_data->queue) > 0) {
@@ -500,7 +501,7 @@ static void close_notification_unsafe(kano_notifications_t *plugin_data)
 		system(LED_STOP_CMD);
 		destroy_gtk_window(plugin_data);
 		destroy_notification_from_q(plugin_data);
-		printf("Closed notification\n");
+		g_printf("Closed notification\n");
 		g_idle_add(show_notification_window_from_q, plugin_data);
 	}
 }
