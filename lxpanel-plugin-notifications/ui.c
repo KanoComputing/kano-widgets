@@ -298,10 +298,6 @@ void show_notification_window(kano_notifications_t *plugin_data,
 		printf(" ### WARNING: Window data is not empty, will ovewrite it\n");
 		return;
 	}
-	if (g_mutex_trylock(&(plugin_data->lock)) == TRUE) {
-		g_mutex_unlock(&(plugin_data->lock));
-		printf(" ### WARNING: NOT LOCKED WHILE CREATING notification\n");
-	}
 
 	plugin_data->window = win;
 
@@ -464,9 +460,11 @@ void show_notification_window(kano_notifications_t *plugin_data,
 void show_notification_window_from_q(kano_notifications_t *plugin_data)
 {
 	notification_info_t *notif = NULL;
-	g_mutex_lock(&(plugin_data->lock));
+	if (plugin_data == NULL)
+		return;
 
-	if (g_list_length(plugin_data->queue) > 0) {
+	g_mutex_lock(&(plugin_data->lock));
+	if (plugin_data->window == NULL && g_list_length(plugin_data->queue) > 0) {
 		notif = g_list_nth_data(plugin_data->queue, 0);
 		show_notification_window(plugin_data, notif);
 	}
