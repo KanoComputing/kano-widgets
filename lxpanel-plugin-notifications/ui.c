@@ -464,11 +464,14 @@ void show_notification_window(kano_notifications_t *plugin_data,
 void show_notification_window_from_q(kano_notifications_t *plugin_data)
 {
 	notification_info_t *notif = NULL;
+	g_mutex_lock(&(plugin_data->lock));
 
 	if (g_list_length(plugin_data->queue) > 0) {
 		notif = g_list_nth_data(plugin_data->queue, 0);
 		show_notification_window(plugin_data, notif);
 	}
+
+	g_mutex_unlock(&(plugin_data->lock));
 }
 
 static gboolean destroy_gtk_window(kano_notifications_t *plugin_data)
@@ -500,7 +503,7 @@ static void close_notification_unsafe(kano_notifications_t *plugin_data)
 		destroy_gtk_window(plugin_data);
 		destroy_notification_from_q(plugin_data);
 		printf("Closed notification\n");
-		show_notification_window_from_q(plugin_data);
+		g_idle_add(show_notification_window_from_q, plugin_data);
 	}
 }
 
