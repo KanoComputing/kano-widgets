@@ -121,6 +121,7 @@ int main(int argc, char *argv[])
 
 	cleanup(plugin_data);
 
+	return 0;
 }
 
 /*
@@ -651,7 +652,7 @@ static gboolean io_watch_cb(GIOChannel *source, GIOCondition cond, gpointer data
 			g_mutex_lock(&(plugin_data->lock));
 			plugin_data->paused = FALSE;
 
-			g_idle_add(show_notification_window_from_q, plugin_data);
+			g_idle_add((GSourceFunc) show_notification_window_from_q, plugin_data);
 
 			g_mutex_unlock(&(plugin_data->lock));
 			g_free(line);
@@ -696,7 +697,7 @@ static gboolean io_watch_cb(GIOChannel *source, GIOCondition cond, gpointer data
 			}
 			if (g_list_length(plugin_data->queue) <= 2 &&
 				!plugin_data->paused) {
-				g_idle_add(show_notification_window_from_q, plugin_data);
+				g_idle_add((GSourceFunc) show_notification_window_from_q, plugin_data);
 			}
 
 			g_mutex_unlock(&(plugin_data->lock));

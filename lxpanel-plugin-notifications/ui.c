@@ -494,7 +494,7 @@ static void close_notification_unsafe(kano_notifications_t *plugin_data)
 		system(LED_STOP_CMD);
 		destroy_gtk_window(plugin_data);
 		destroy_notification_from_q(plugin_data);
-		g_idle_add(show_notification_window_from_q, plugin_data);
+		g_idle_add((GSourceFunc)show_notification_window_from_q, plugin_data);
 	}
 }
 
