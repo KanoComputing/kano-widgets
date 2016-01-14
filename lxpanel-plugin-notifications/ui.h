@@ -39,7 +39,8 @@
 
 #define EXTRA_BUTTON_LABEL_COLOUR "#ffffff"
 
-#define ON_TIME 60000
+// The following is in seconds. The timer is not guaranteed to be super precise
+#define ON_TIME 60
 
 #define REGISTER_REMINDER \
 	"{" \
@@ -58,8 +59,7 @@ typedef struct {
 } gtk_user_data_t;
 
 void launch_cmd(const char *cmd, gboolean hourglass);
-void show_notification_window(kano_notifications_t *plugin_data,
-				     notification_info_t *notification);
+gboolean show_notification_window_from_q(kano_notifications_t *plugin_data);
 gboolean close_notification(kano_notifications_t *plugin_data);
 
 #endif

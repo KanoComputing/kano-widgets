@@ -23,6 +23,10 @@
 
 #define LED_START_CMD "sudo -b kano-speakerleds notification start"
 #define LED_STOP_CMD "sudo kano-speakerleds notification stop"
+
+
+static void close_notification_unsafe(kano_notifications_t *plugin_data);
+
 /*
  * Non-blocking way of launching a command.
  */
@@ -59,9 +63,15 @@ void launch_cmd(const char *cmd, gboolean hourglass)
 static void hide_notification_window(kano_notifications_t *plugin_data)
 {
 	if (g_mutex_trylock(&(plugin_data->lock)) == TRUE) {
-		g_source_remove(plugin_data->window_timeout);
+		if (plugin_data->window_timeout > 0) {
+			GSource *source_no;
+			source_no = g_main_context_find_source_by_id(NULL, plugin_data->window_timeout);
+			if (source_no) {
+				g_source_destroy(source_no);
+			}
+		}
+		close_notification_unsafe(plugin_data);
 		g_mutex_unlock(&(plugin_data->lock));
-		close_notification(plugin_data);
 	}
 }
 
@@ -278,6 +288,10 @@ void show_notification_window(kano_notifications_t *plugin_data,
 				     notification_info_t *notification)
 {
 	GtkWidget *win = gtk_window_new(GTK_WINDOW_POPUP);
+
+	if (notification == NULL)
+		return;
+
 	plugin_data->window = win;
 
 	GtkStyle *style;
@@ -423,7 +437,7 @@ void show_notification_window(kano_notifications_t *plugin_data,
 	/* Change speaker LED colour for notification. */
 
 	{
-	        int bufsize = strlen(LED_START_CMD)+strlen(notification->unparsed)+4;
+		int bufsize = strlen(LED_START_CMD)+strlen(notification->unparsed)+4;
 		gchar *notify_cmd = g_new0(gchar, bufsize);
 		g_snprintf(notify_cmd, bufsize, LED_START_CMD " '%s'", notification->unparsed);
 		launch_cmd(notify_cmd, FALSE);
@@ -431,32 +445,71 @@ void show_notification_window(kano_notifications_t *plugin_data,
 	}
 
 
-	plugin_data->window_timeout = g_timeout_add(ON_TIME,
+	plugin_data->window_timeout = g_timeout_add_seconds(ON_TIME,
 				(GSourceFunc) close_notification,
 				(gpointer) plugin_data);
 }
 
-/* This will queue and show the kano-world registration and updater reminders
- * if needed.
+/* Peeks at the front of the queue and creates and shows a new Gtk Window
+ * with the notification.
  *
- * Expects plugin_data to be locked.
+ * If there is a different active window or if the queue is empty it returns
+ *
+ * NOTE: the G_SOURCE_REMOVE return value is necessary so that when this fn is
+ * used with g_idle_add it is only executed once
+ *
  */
-static void show_reminders(kano_notifications_t *plugin_data)
+gboolean show_notification_window_from_q(kano_notifications_t *plugin_data)
 {
-	/* Both reminders only make sense when the user is online */
-	if (!is_internet())
-		return;
-
 	notification_info_t *notif = NULL;
-	if (!is_user_registered()) {
-   	        notif = get_json_notification(REGISTER_REMINDER, FALSE);
-		plugin_data->queue = g_list_append(plugin_data->queue, notif);
+	if (plugin_data == NULL)
+		return G_SOURCE_REMOVE;
 
-	}
-
-	if (g_list_length(plugin_data->queue) > 0) {
+	g_mutex_lock(&(plugin_data->lock));
+	if (plugin_data->window == NULL && g_list_length(plugin_data->queue) > 0) {
 		notif = g_list_nth_data(plugin_data->queue, 0);
 		show_notification_window(plugin_data, notif);
+	}
+
+	g_mutex_unlock(&(plugin_data->lock));
+	return G_SOURCE_REMOVE;
+}
+
+static void destroy_gtk_window(kano_notifications_t *plugin_data)
+{
+	if (plugin_data->window != NULL) {
+		gtk_widget_destroy(plugin_data->window);
+		plugin_data->window = NULL;
+	}
+}
+
+static void destroy_notification_from_q(kano_notifications_t *plugin_data)
+{
+	notification_info_t *notification;
+
+	if (plugin_data != NULL) {
+		notification = g_list_nth_data(plugin_data->queue, 0);
+		plugin_data->queue = g_list_remove(plugin_data->queue, notification);
+		free_notification(notification);
+	}
+
+	return TRUE;
+}
+
+/* This function is "unsafe" because it does not use any locking mechanisms
+ * to prevent concurrency issues and thus is not thread safe.
+ *
+ * A similarly named function (without the _unsafe suffix) is also available
+ *
+ *
+ */
+static void close_notification_unsafe(kano_notifications_t *plugin_data)
+{
+	if (plugin_data->window != NULL) {
+		system(LED_STOP_CMD);
+		destroy_gtk_window(plugin_data);
+		destroy_notification_from_q(plugin_data);
+		g_idle_add((GSourceFunc)show_notification_window_from_q, plugin_data);
 	}
 }
 
@@ -472,36 +525,13 @@ gboolean close_notification(kano_notifications_t *plugin_data)
 	 * We use system() so we don't kill next led command for the next notification.
 	 */
 
-	system(LED_STOP_CMD);
-
 	if (plugin_data->window != NULL) {
 		g_mutex_lock(&(plugin_data->lock));
 
-		gtk_widget_destroy(plugin_data->window);
-		plugin_data->window = NULL;
-
-		notification_info_t *notification = g_list_nth_data(plugin_data->queue, 0);
-		plugin_data->queue = g_list_remove(plugin_data->queue, notification);
-		free_notification(notification);
-
-
-		if (g_list_length(plugin_data->queue) >= 1) {
-			/* Show the next one in the queue */
-			notification_info_t *notification = g_list_nth_data(plugin_data->queue, 0);
-			show_notification_window(plugin_data, notification);
-		} else {
-			/* If this was a las one in a row, queue additional
-			   reminders. */
-			if (!plugin_data->queue_has_reminders) {
-				plugin_data->queue_has_reminders = TRUE;
-				show_reminders(plugin_data);
-			} else {
-				plugin_data->queue_has_reminders = FALSE;
-			}
-		}
+		close_notification_unsafe(plugin_data);
 
 		g_mutex_unlock(&(plugin_data->lock));
 	}
 
-	return FALSE;
+	return G_SOURCE_REMOVE;
 }

@@ -42,7 +42,6 @@ typedef struct {
 
 	GMutex lock;
 	GList *queue;
-	gboolean queue_has_reminders;
 
 	GtkWidget *window;
 	guint window_timeout;

@@ -1,3 +1,9 @@
+kano-widgets (2.3.0-1) unstable; urgency=low
+
+  * Fixes for kano notification daemon
+
+ -- Team Kano <dev@kano.me>  Thu, 14 Jan 2015 10:30:00 +0100
+
 kano-widgets (2.2-1) unstable; urgency=low
 
   * Made notification widget into a separate executable.
