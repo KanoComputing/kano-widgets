@@ -450,6 +450,15 @@ void show_notification_window(kano_notifications_t *plugin_data,
 				(gpointer) plugin_data);
 }
 
+/* Peeks at the front of the queue and creates and shows a new Gtk Window
+ * with the notification.
+ *
+ * If there is a different active window or if the queue is empty it returns
+ *
+ * NOTE: the G_SOURCE_REMOVE return value is necessary so that when this fn is
+ * used with g_idle_add it is only executed once
+ *
+ */
 gboolean show_notification_window_from_q(kano_notifications_t *plugin_data)
 {
 	notification_info_t *notif = NULL;
@@ -466,16 +475,15 @@ gboolean show_notification_window_from_q(kano_notifications_t *plugin_data)
 	return G_SOURCE_REMOVE;
 }
 
-static gboolean destroy_gtk_window(kano_notifications_t *plugin_data)
+static void destroy_gtk_window(kano_notifications_t *plugin_data)
 {
 	if (plugin_data->window != NULL) {
 		gtk_widget_destroy(plugin_data->window);
 		plugin_data->window = NULL;
 	}
-	return TRUE;
 }
 
-static gboolean destroy_notification_from_q(kano_notifications_t *plugin_data)
+static void destroy_notification_from_q(kano_notifications_t *plugin_data)
 {
 	notification_info_t *notification;
 
