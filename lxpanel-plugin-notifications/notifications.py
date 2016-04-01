@@ -154,9 +154,9 @@ def _do_send_to_widget(message):
     if not os.path.exists(_NOTIFICATION_PIPE):
         msg = "The notification pipe not found at {}".format(_NOTIFICATION_PIPE)
         logger.warn(msg)
-        return
 
-    with open(_NOTIFICATION_PIPE, 'w') as fifo:
+    # Open the fifo in append mode, as if it is not present notifications are queued in a flat file
+    with open(_NOTIFICATION_PIPE, 'a') as fifo:
         msg = 'Sending "{}" to the notifications widget'.format(message)
         logger.debug(msg)
         fifo.write(message + '\n')
