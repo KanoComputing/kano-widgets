@@ -24,7 +24,7 @@
 #ifndef notif_config_h
 #define notif_config_h
 
-#define FIFO_FILENAME ".kano-notifications.fifo"
+#define FIFO_FILENAME ".kano-notifications-desktop.fifo"
 #define CONF_FILENAME ".kano-notifications.conf"
 
 
