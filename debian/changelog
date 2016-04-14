@@ -1,3 +1,9 @@
+kano-widgets (3.0.0-1) unstable; urgency=low
+
+  * Change fifo location to work woth dashboard.
+
+ -- Team Kano <dev@kano.me>  Thu, 14 Apr 2016 11:14:00 +0100
+
 kano-widgets (2.3.0-1) unstable; urgency=low
 
   * Fixes for kano notification daemon
