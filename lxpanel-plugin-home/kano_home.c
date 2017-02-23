@@ -6,6 +6,8 @@
 *
 */
 
+#define GETTEXT_PACKAGE "kano-widgets"
+
 #include <glib/gi18n.h>
 #include <lxpanel/plugin.h>
 
@@ -18,7 +20,7 @@
 #include <time.h>
 
 #define ICON_FILE "/usr/share/kano-widgets/icons/home-widget.png"
-#define PLUGIN_TOOLTIP "Home"
+#define PLUGIN_TOOLTIP Q_("Home")
 
 
 static gboolean minimise_windows(GtkWidget *, GdkEventButton *);

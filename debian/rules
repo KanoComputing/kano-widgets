@@ -4,5 +4,6 @@
 	dh $@
 
 override_dh_auto_build:
+	cd po && make
 	cd lxpanel-plugin-home && make
 	cd lxpanel-plugin-notifications && make
