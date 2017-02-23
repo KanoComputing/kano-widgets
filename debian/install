@@ -1,5 +1,5 @@
-
 icon/* usr/share/kano-widgets/icons/
+locale/* usr/share/locale/
 
 lxpanel-plugin-home/kano_home.so usr/lib/arm-linux-gnueabihf/lxpanel/plugins/
 

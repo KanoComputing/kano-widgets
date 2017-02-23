@@ -1,0 +1,30 @@
+# Spanish translations for kano-widgets package.
+# Copyright (C) 2017 Kano Computing Ltd.
+# This file is distributed under the same license as the kano-widgets package.
+# Automatically generated, 2017.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: kano-widgets\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2017-02-23 10:40+0000\n"
+"PO-Revision-Date: 2017-02-23 10:40+0000\n"
+"Last-Translator: Automatically generated\n"
+"Language-Team: none\n"
+"Language: es_AR\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=ASCII\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: ../lxpanel-plugin-home/kano_home.c:23
+msgid "Home"
+msgstr ""
+
+#: ../lxpanel-plugin-home/kano_home.c:90
+msgid "Kano Home"
+msgstr ""
+
+#: ../lxpanel-plugin-home/kano_home.c:91
+msgid "Minimise open windows."
+msgstr ""
