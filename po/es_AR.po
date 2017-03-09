@@ -19,12 +19,12 @@ msgstr ""
 
 #: ../lxpanel-plugin-home/kano_home.c:23
 msgid "Home"
-msgstr ""
+msgstr "Inicio"
 
 #: ../lxpanel-plugin-home/kano_home.c:90
 msgid "Kano Home"
-msgstr ""
+msgstr "Inicio Kano"
 
 #: ../lxpanel-plugin-home/kano_home.c:91
 msgid "Minimise open windows."
-msgstr ""
+msgstr "Minimizar ventanas abiertas"
