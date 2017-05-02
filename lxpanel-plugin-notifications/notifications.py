@@ -116,7 +116,7 @@ def display_notification_by_id(notification_id):
 
 
 def display_generic_notification(title, byline, image=None, command=None,
-                                 sound=None, ntype=None):
+                                 sound=None, ntype=None, urgency=None):
     """ Display a generic notification
 
     Using this function you can customise all the parameters of the
@@ -129,11 +129,18 @@ def display_generic_notification(title, byline, image=None, command=None,
     :param command: an action that the user can optionaly launch
     :param sound: an absolute path to a wav file to play with the notification
     :param ntype: the type of a notification
+    :param urgency: the urgency level (0: low, 1: normal, 2: critical)
     """
 
-    notification_data = {"title": title, "byline": byline,
-                         "image": image, "command": command, "sound": sound,
-                         "type": ntype}
+    notification_data = {
+        "title": title,
+        "byline": byline,
+        "image": image,
+        "command": command,
+        "sound": sound,
+        "type": ntype,
+        "urgency": urgency
+    }
 
     _send_to_widget(json.dumps(notification_data))
 
