@@ -7,6 +7,9 @@
 
 import os
 import json
+import dbus
+import dbus.exceptions
+
 from kano.logging import logger
 from kano.timeout import timeout, TimeoutError
 from kano.utils import get_user_unsudoed, get_home_by_username
@@ -146,11 +149,12 @@ def display_generic_notification(title, byline, image=None, command=None,
 
 
 def _send_to_widget(message):
-  try:
-    _do_send_to_widget(message)
-  except TimeoutError:
-    pass
-  
+    try:
+        _do_send_to_widget(message)
+    except TimeoutError:
+        pass
+
+
 @timeout(2)
 def _do_send_to_widget(message):
     """ Dispatch a message to the notification pipe
@@ -167,3 +171,22 @@ def _do_send_to_widget(message):
         msg = 'Sending "{}" to the notifications widget'.format(message)
         logger.debug(msg)
         fifo.write(message + '\n')
+
+
+def close_current_notification():
+    """
+    Closes the notification that is currently open
+
+    FIXME: Ideally we wouldn't have to do a `su` hack to send a message on the
+    session bus
+    """
+    os.system((
+        'su {user} - -c "'
+        '    dbus-send'
+        '        --session'
+        '        --type=method_call'
+        '        --dest=org.freedesktop.Notifications'
+        '        /org/freedesktop/Notifications'
+        '        org.freedesktop.Notifications.CloseNotification'
+        '"'
+    ).format(user=get_user_unsudoed()))
