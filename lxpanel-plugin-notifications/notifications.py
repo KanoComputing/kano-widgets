@@ -190,3 +190,28 @@ def close_current_notification():
         '        org.freedesktop.Notifications.CloseNotification'
         '"'
     ).format(user=get_user_unsudoed()))
+
+
+def update_current_notification(title='', desc=''):
+    """
+    Updates the text on the notification that is currently open
+
+    FIXME: Ideally we wouldn't have to do a `su` hack to send a message on the
+    session bus
+    """
+    os.system((
+        'su {user} - -c "'
+        '    dbus-send'
+        '        --session'
+        '        --type=method_call'
+        '        --dest=org.freedesktop.Notifications'
+        '        /org/freedesktop/Notifications'
+        '        org.freedesktop.Notifications.UpdateNotification'
+        '        string:\'{title}\''
+        '        string:\'{desc}\''
+        '"'
+    ).format(
+        user=get_user_unsudoed(),
+        title=title,
+        desc=desc
+    ))
