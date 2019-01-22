@@ -1,3 +1,9 @@
+kano-widgets (4.2.1-0) unstable; urgency=low
+
+  * Removed dependency on kano-profile, fix dependency loop
+
+ -- Team Kano <dev@kano.me>  Tue, 22 Jan 2019 11:14:00 +0000
+
 kano-widgets (3.0.0-1) unstable; urgency=low
 
   * Change fifo location to work woth dashboard.
