@@ -1,12 +1,12 @@
 # Makefile
 #
-# Copyright (C) 2014 Kano Computing Ltd.
-# License: http://www.gnu.org/licenses/gpl-2.0.txt GNU General Public License v2
+# Copyright (C) 2014-2019 Kano Computing Ltd.
+# License: http://www.gnu.org/licenses/gpl-2.0.txt GNU GPL v2
 #
 
 CC=gcc
-CFLAGS= `pkg-config --cflags gtk+-2.0` -g3
-LIBS=`pkg-config --libs gtk+-2.0`-lkdesk-hourglass
+CFLAGS=`pkg-config --cflags gtk+-2.0` -g3
+LIBS=`pkg-config --libs gtk+-2.0` -lkdesk-hourglass
 MODE=755
 
 SRC=kano_notifications.c parson/parson.c config.c ui.c
@@ -26,4 +26,3 @@ install: $(BIN)
 
 $(BIN): $(SRC)
 	$(CC) -Wall $(CFLAGS) $(SRC) -o $(BIN) $(LIBS)
-
